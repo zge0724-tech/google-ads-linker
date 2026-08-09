@@ -1,0 +1,17 @@
+{
+  "name": "google-ads-linker",
+  "version": "1.0.0",
+  "description": "Google Ads automated link replacement and traffic routing system",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "better-sqlite3": "^11.7.0",
+    "express": "^4.21.2",
+    "https-proxy-agent": "^7.0.6",
+    "node-cron": "^3.0.3"
+  }
+}

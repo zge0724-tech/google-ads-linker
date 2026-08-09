@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BrandBidding 风险管理后台 - 换链管理</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --surface-hover: #243044;
+      --border: #2d3a4f;
+      --text: #e8edf4;
+      --text-muted: #8b9cb3;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --accent: #6366f1;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--primary);
+      letter-spacing: -0.5px;
+    }
+
+    .logo span { color: var(--text-muted); font-weight: 400; }
+
+    .api-bar {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .api-bar code { color: var(--success); }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-header h2 {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .card-body { padding: 20px; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 1024px) {
+      .form-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 640px) {
+      .form-grid { grid-template-columns: 1fr; }
+    }
+
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group.full-width { grid-column: 1 / -1; }
+
+    label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input[type="text"],
+    input[type="url"],
+    input[type="number"],
+    textarea,
+    select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    textarea { resize: vertical; min-height: 60px; }
+
+    .hours-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 6px;
+    }
+
+    @media (max-width: 768px) {
+      .hours-grid { grid-template-columns: repeat(6, 1fr); }
+    }
+
+    .hour-check {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 6px 4px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.15s;
+      user-select: none;
+    }
+
+    .hour-check:hover { border-color: var(--primary); }
+
+    .hour-check input { display: none; }
+
+    .hour-check.checked {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { opacity: 0.9; }
+
+    .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+    .btn-danger:hover { background: var(--danger); color: #fff; }
+
+    .btn-secondary {
+      background: var(--surface-hover);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--border); }
+
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+    .form-actions {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th {
+      text-align: left;
+      padding: 12px 14px;
+      background: var(--bg);
+      color: var(--text-muted);
+      font-weight: 500;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    tr:hover td { background: var(--surface-hover); }
+
+    .url-cell {
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family: monospace;
+      font-size: 12px;
+      color: var(--success);
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .status-ok { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+    .status-err { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+    .status-pending { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+
+    .actions { display: flex; gap: 6px; }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 14px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s;
+      z-index: 1000;
+    }
+
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { border-color: var(--success); }
+    .toast.error { border-color: var(--danger); }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--text-muted);
+    }
+
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.show { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-body { padding: 20px; }
+
+    .script-preview {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      max-height: 400px;
+      overflow: auto;
+      white-space: pre-wrap;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-left">
+    <div class="logo">BrandBidding <span>/ 换链管理</span></div>
+    <div class="api-bar">
+      API 根路径: <code id="apiBase">加载中...</code>
+    </div>
+  </div>
+  <button class="btn btn-success" id="btnCopyScript">一键复制 Google Ads 脚本</button>
+</header>
+
+<div class="container">
+  <div class="card">
+    <div class="card-header">
+      <h2 id="formTitle">新建换链任务</h2>
+    </div>
+    <div class="card-body">
+      <form id="taskForm" class="form-grid">
+        <input type="hidden" id="taskId" value="">
+
+        <div class="form-group">
+          <label for="alliance_name">联盟名称 *</label>
+          <input type="text" id="alliance_name" required placeholder="如：CJ、ShareASale">
+        </div>
+
+        <div class="form-group">
+          <label for="campaign_name">广告系列名称 *</label>
+          <input type="text" id="campaign_name" required placeholder="Google Ads 广告系列名称">
+        </div>
+
+        <div class="form-group">
+          <label for="expected_domain">落地页预期域名 *</label>
+          <input type="text" id="expected_domain" required placeholder="如：example.com">
+        </div>
+
+        <div class="form-group full-width">
+          <label for="original_link">联盟原始链接 *</label>
+          <input type="url" id="original_link" required placeholder="https://affiliate.example.com/track?id=xxx">
+        </div>
+
+        <div class="form-group full-width">
+          <label for="proxy_url">目标国代理 IP *</label>
+          <input type="text" id="proxy_url" required placeholder="http://user:pass@host:port">
+        </div>
+
+        <div class="form-group">
+          <label for="mcc_id">MCC ID</label>
+          <input type="text" id="mcc_id" placeholder="123-456-7890">
+        </div>
+
+        <div class="form-group">
+          <label for="ads_account_id">Google Ads 账号 ID</label>
+          <input type="text" id="ads_account_id" placeholder="987-654-3210">
+        </div>
+
+        <div class="form-group">
+          <label for="run_frequency">运行频率（分钟）</label>
+          <input type="number" id="run_frequency" value="60" min="1" max="1440">
+        </div>
+
+        <div class="form-group full-width">
+          <label for="referer">Referer 伪装</label>
+          <input type="text" id="referer" placeholder="https://www.google.com/">
+        </div>
+
+        <div class="form-group full-width">
+          <label>24 小时运行时间点（勾选允许运行的小时，留空表示全天）</label>
+          <div class="hours-grid" id="hoursGrid"></div>
+        </div>
+
+        <div class="form-group full-width">
+          <label for="notes">备注</label>
+          <textarea id="notes" placeholder="可选备注信息"></textarea>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="btnSubmit">创建任务</button>
+          <button type="button" class="btn btn-secondary" id="btnCancel" style="display:none">取消编辑</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>任务列表</h2>
+      <button class="btn btn-secondary btn-sm" id="btnRefresh">刷新</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>联盟</th>
+            <th>广告系列</th>
+            <th>预期域名</th>
+            <th>Final URL</th>
+            <th>频率</th>
+            <th>状态</th>
+            <th>最后更新</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="taskTableBody">
+          <tr><td colspan="9" class="empty-state">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="scriptModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Google Ads 换链脚本</h2>
+      <button class="btn btn-secondary btn-sm" id="btnCloseModal">关闭</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:12px;color:var(--text-muted);font-size:13px">
+        将此脚本添加到 Google Ads → 工具与设置 → 批量操作 → 脚本，并设置定时运行。
+      </p>
+      <pre class="script-preview" id="scriptContent"></pre>
+      <div style="margin-top:16px;display:flex;gap:10px">
+        <button class="btn btn-success" id="btnCopyScriptModal">复制脚本</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const API = window.location.origin;
+  let adsScript = '';
+
+  function showToast(msg, type = 'success') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `toast show ${type}`;
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  function buildHoursGrid() {
+    const grid = document.getElementById('hoursGrid');
+    grid.innerHTML = '';
+    for (let h = 0; h < 24; h++) {
+      const label = document.createElement('label');
+      label.className = 'hour-check';
+      label.innerHTML = `<input type="checkbox" value="${h}">${h}时`;
+      label.querySelector('input').addEventListener('change', (e) => {
+        label.classList.toggle('checked', e.target.checked);
+      });
+      grid.appendChild(label);
+    }
+  }
+
+  function getSelectedHours() {
+    return [...document.querySelectorAll('#hoursGrid input:checked')].map(el => +el.value);
+  }
+
+  function setSelectedHours(hours) {
+    document.querySelectorAll('#hoursGrid input').forEach(input => {
+      const checked = hours.includes(+input.value);
+      input.checked = checked;
+      input.closest('.hour-check').classList.toggle('checked', checked);
+    });
+  }
+
+  function resetForm() {
+    document.getElementById('taskForm').reset();
+    document.getElementById('taskId').value = '';
+    document.getElementById('run_frequency').value = '60';
+    setSelectedHours([]);
+    document.getElementById('formTitle').textContent = '新建换链任务';
+    document.getElementById('btnSubmit').textContent = '创建任务';
+    document.getElementById('btnCancel').style.display = 'none';
+  }
+
+  async function loadInfo() {
+    try {
+      const res = await fetch(`${API}/api/info`);
+      const data = await res.json();
+      document.getElementById('apiBase').textContent = data.baseUrl;
+    } catch {
+      document.getElementById('apiBase').textContent = API;
+    }
+  }
+
+  async function loadAdsScript() {
+    try {
+      const res = await fetch(`${API}/api/ads-script`);
+      adsScript = await res.text();
+    } catch {
+      adsScript = '';
+    }
+  }
+
+  async function loadTasks() {
+    const tbody = document.getElementById('taskTableBody');
+    try {
+      const res = await fetch(`${API}/api/tasks`);
+      const tasks = await res.json();
+
+      if (!tasks.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">暂无任务，请创建第一个换链任务</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = tasks.map(t => {
+        let status, statusClass;
+        if (t.last_error) {
+          status = '错误';
+          statusClass = 'status-err';
+        } else if (t.final_url) {
+          status = '正常';
+          statusClass = 'status-ok';
+        } else {
+          status = '待运行';
+          statusClass = 'status-pending';
+        }
+
+        return `<tr>
+          <td>${t.id}</td>
+          <td>${esc(t.alliance_name)}</td>
+          <td>${esc(t.campaign_name)}</td>
+          <td>${esc(t.expected_domain)}</td>
+          <td class="url-cell" title="${esc(t.final_url || '')}">${esc(t.final_url || '-')}</td>
+          <td>${t.run_frequency}分钟</td>
+          <td><span class="status-badge ${statusClass}" title="${esc(t.last_error || '')}">${status}</span></td>
+          <td>${t.last_updated || '-'}</td>
+          <td class="actions">
+            <button class="btn btn-secondary btn-sm" onclick="runTask(${t.id})">运行</button>
+            <button class="btn btn-secondary btn-sm" onclick="editTask(${t.id})">编辑</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteTask(${t.id})">删除</button>
+          </td>
+        </tr>`;
+      }).join('');
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="9" class="empty-state">加载失败: ${err.message}</td></tr>`;
+    }
+  }
+
+  function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  document.getElementById('taskForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('taskId').value;
+    const payload = {
+      alliance_name: document.getElementById('alliance_name').value.trim(),
+      original_link: document.getElementById('original_link').value.trim(),
+      proxy_url: document.getElementById('proxy_url').value.trim(),
+      expected_domain: document.getElementById('expected_domain').value.trim(),
+      mcc_id: document.getElementById('mcc_id').value.trim(),
+      ads_account_id: document.getElementById('ads_account_id').value.trim(),
+      campaign_name: document.getElementById('campaign_name').value.trim(),
+      run_frequency: parseInt(document.getElementById('run_frequency').value, 10) || 60,
+      run_hours: getSelectedHours(),
+      referer: document.getElementById('referer').value.trim(),
+      notes: document.getElementById('notes').value.trim(),
+    };
+
+    try {
+      const url = id ? `${API}/api/tasks/${id}` : `${API}/api/tasks`;
+      const res = await fetch(url, {
+        method: id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '操作失败');
+
+      showToast(id ? '任务已更新' : '任务已创建');
+      resetForm();
+      loadTasks();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  async function editTask(id) {
+    try {
+      const res = await fetch(`${API}/api/tasks/${id}`);
+      const t = await res.json();
+      if (!res.ok) throw new Error(t.error);
+
+      document.getElementById('taskId').value = t.id;
+      document.getElementById('alliance_name').value = t.alliance_name;
+      document.getElementById('original_link').value = t.original_link;
+      document.getElementById('proxy_url').value = t.proxy_url;
+      document.getElementById('expected_domain').value = t.expected_domain;
+      document.getElementById('mcc_id').value = t.mcc_id || '';
+      document.getElementById('ads_account_id').value = t.ads_account_id || '';
+      document.getElementById('campaign_name').value = t.campaign_name;
+      document.getElementById('run_frequency').value = t.run_frequency;
+      document.getElementById('referer').value = t.referer || '';
+      document.getElementById('notes').value = t.notes || '';
+      setSelectedHours(t.run_hours || []);
+
+      document.getElementById('formTitle').textContent = `编辑任务 #${t.id}`;
+      document.getElementById('btnSubmit').textContent = '保存修改';
+      document.getElementById('btnCancel').style.display = 'inline-flex';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function deleteTask(id) {
+    if (!confirm('确定删除此任务？')) return;
+    try {
+      const res = await fetch(`${API}/api/tasks/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error);
+      }
+      showToast('任务已删除');
+      loadTasks();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function runTask(id) {
+    showToast('正在运行...');
+    try {
+      const res = await fetch(`${API}/api/tasks/${id}/run`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      if (data.last_error) {
+        showToast(data.last_error, 'error');
+      } else {
+        showToast('运行完成，Final URL 已更新');
+      }
+      loadTasks();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  function copyScript() {
+    const text = adsScript || document.getElementById('scriptContent').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('脚本已复制到剪贴板');
+    }).catch(() => {
+      showToast('复制失败，请手动复制', 'error');
+    });
+  }
+
+  document.getElementById('btnCopyScript').addEventListener('click', () => {
+    document.getElementById('scriptContent').textContent = adsScript;
+    document.getElementById('scriptModal').classList.add('show');
+  });
+
+  document.getElementById('btnCopyScriptModal').addEventListener('click', copyScript);
+  document.getElementById('btnCloseModal').addEventListener('click', () => {
+    document.getElementById('scriptModal').classList.remove('show');
+  });
+
+  document.getElementById('btnCancel').addEventListener('click', resetForm);
+  document.getElementById('btnRefresh').addEventListener('click', loadTasks);
+
+  buildHoursGrid();
+  loadInfo();
+  loadAdsScript();
+  loadTasks();
+</script>
+</body>
+</html>
