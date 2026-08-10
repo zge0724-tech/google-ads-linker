@@ -47,70 +47,83 @@ function parseRunHours(raw) {
   } catch {
     return [];
   }
-}
+  async function resolveFinalUrl(originalLink, proxyUrl, referer) {
+    let browser = null;
+    try {
+        const args = [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage'
+        ];
 
-function rowToTask(row) {
-  return {
-    ...row,
-    run_hours: parseRunHours(row.run_hours),
-  };
-}
+        let proxyAuth = null;
+        if (proxyUrl && proxyUrl.trim()) {
+            try {
+                let cleanProxy = proxyUrl.trim();
+                let host, port, username, password;
 
-async function resolveFinalUrl(originalLink, proxyUrl, referer) {
-  let browser = null;
-  try {
-      const args = [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage'
-      ];
+                // 支持 格式 1: hostname:port:username:password
+                if (!cleanProxy.includes('://') && cleanProxy.split(':').length === 4) {
+                    const parts = cleanProxy.split(':');
+                    host = parts[0];
+                    port = parts[1];
+                    username = parts[2];
+                    password = parts[3];
+                    args.push(`--proxy-server=http://${host}:${port}`);
+                    proxyAuth = { username, password };
+                } else {
+                    // 支持 格式 2: http://username:password@hostname:port 标准格式
+                    if (!cleanProxy.startsWith('http://') && !cleanProxy.startsWith('https://')) {
+                        cleanProxy = 'http://' + cleanProxy;
+                    }
+                    const parsedProxy = new URL(cleanProxy);
+                    args.push(`--proxy-server=${parsedProxy.protocol}//${parsedProxy.host}`);
+                    if (parsedProxy.username || parsedProxy.password) {
+                        proxyAuth = {
+                            username: decodeURIComponent(parsedProxy.username),
+                            password: decodeURIComponent(parsedProxy.password)
+                        };
+                    }
+                }
+            } catch (e) {
+                console.error("代理解析失败:", e.message);
+            }
+        }
 
-      let proxyAuth = null;
-      if (proxyUrl) {
-          try {
-              const parsedProxy = new URL(proxyUrl);
-              args.push(`--proxy-server=${parsedProxy.protocol}//${parsedProxy.host}`);
-              if (parsedProxy.username || parsedProxy.password) {
-                  proxyAuth = {
-                      username: decodeURIComponent(parsedProxy.username),
-                      password: decodeURIComponent(parsedProxy.password)
-                  };
-              }
-          } catch (e) {
-              console.error("代理解析失败:", e.message);
-          }
-      }
+        browser = await puppeteer.launch({
+            headless: true,
+            args: args
+        });
 
-      browser = await puppeteer.launch({
-          headless: true,
-          args: args
-      });
+        const page = await browser.newPage();
 
-      const page = await browser.newPage();
+        if (proxyAuth) {
+            await page.authenticate(proxyAuth);
+        }
 
-      if (proxyAuth) {
-          await page.authenticate(proxyAuth);
-      }
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+        
+        if (referer) {
+            await page.setExtraHTTPHeaders({ 'Referer': referer });
+        }
 
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-      
-      if (referer) {
-          await page.setExtraHTTPHeaders({ 'Referer': referer });
-      }
+        // 修改为 DOMContentLoaded 策略，避免 WebSocket/轮询导致超时
+        await page.goto(originalLink, {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+        });
 
-      await page.goto(originalLink, {
-          waitUntil: 'networkidle2',
-          timeout: 45000
-      });
+        // 强行等待 3 秒，给 JS 重定向预留充分时间
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
-      const finalUrl = page.url();
-      await browser.close();
-      return finalUrl;
+        const finalUrl = page.url();
+        await browser.close();
+        return finalUrl;
 
-  } catch (error) {
-      if (browser) await browser.close();
-      throw new Error(`Puppeteer 解析失败: ${error.message}`);
-  }
+    } catch (error) {
+        if (browser) await browser.close();
+        throw new Error(`Puppeteer 解析失败: ${error.message}`);
+    }
 }
 
 async function processTask(task) {
