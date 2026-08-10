@@ -45,115 +45,118 @@ function rowToTask(row) {
     return {
         ...row,
         run_hours: parseRunHours(row.run_hours)
-// 3. 独立且修复好的重定向与代理解析函数（增加页面导航监听与 JS 元素提取）
-async function resolveFinalUrl(originalLink, proxyUrl, referer) {
-  let browser = null;
-  try {
-      const args = [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage'
-      ];
-
-      let proxyAuth = null;
-      if (proxyUrl && proxyUrl.trim()) {
-          try {
-              let cleanProxy = proxyUrl.trim();
-              let host, port, username, password;
-
-              if (!cleanProxy.includes('://') && cleanProxy.split(':').length === 4) {
-                  const parts = cleanProxy.split(':');
-                  host = parts[0];
-                  port = parts[1];
-                  username = parts[2];
-                  password = parts[3];
-                  args.push(`--proxy-server=http://${host}:${port}`);
-                  proxyAuth = { username, password };
-              } else if (!cleanProxy.includes('://') && cleanProxy.split(':').length === 2) {
-                  args.push(`--proxy-server=http://${cleanProxy}`);
-              } else {
-                  if (!cleanProxy.startsWith('http://') && !cleanProxy.startsWith('https://')) {
-                      cleanProxy = 'http://' + cleanProxy;
-                  }
-                  const parsedProxy = new URL(cleanProxy);
-                  args.push(`--proxy-server=http://${parsedProxy.hostname}:${parsedProxy.port}`);
-                  if (parsedProxy.username || parsedProxy.password) {
-                      proxyAuth = {
-                          username: decodeURIComponent(parsedProxy.username),
-                          password: decodeURIComponent(parsedProxy.password)
-                      };
-                  }
-              }
-          } catch (e) {
-              console.error("代理 URL 解析失败:", e.message);
-          }
-      }
-
-      browser = await puppeteer.launch({
-          headless: true,
-          args: args
-      });
-
-      const page = await browser.newPage();
-
-      if (proxyAuth) {
-          await page.authenticate(proxyAuth);
-      }
-
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-      
-      if (referer) {
-          await page.setExtraHTTPHeaders({ 'Referer': referer });
-      }
-
-      let finalCapturedUrl = originalLink;
-
-      // 监听主框架导航变化，捕获 JS 或 302 触发的所有 URL 跳转
-      page.on('framenavigated', frame => {
-          if (frame === page.mainFrame()) {
-              finalCapturedUrl = frame.url();
-          }
-      });
-
-      await page.goto(originalLink, {
-          waitUntil: 'networkidle0',
-          timeout: 60000
-      }).catch(() => {});
-
-      // 强制等待 6 秒给 JS 渲染和重定向时间
-      await new Promise(resolve => setTimeout(resolve, 6000));
-
-      // 如果停留在了 quk 中转页，主动解析 Meta 标签或 DOM 里的目标跳转链接
-      const pageUrl = page.url();
-      if (pageUrl.includes('click.quk.com')) {
-          const targetHref = await page.evaluate(() => {
-              const meta = document.querySelector('meta[http-equiv="refresh"]');
-              if (meta) {
-                  const content = meta.getAttribute('content');
-                  const match = content && content.match(/url=(.*)/i);
-                  if (match) return match[1].replace(/['"]/g, '');
-              }
-              const link = document.querySelector('a[href*="patrickta.com"]');
-              return link ? link.href : null;
-          });
-
-          if (targetHref) {
-              await page.goto(targetHref, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
-              await new Promise(resolve => setTimeout(resolve, 3000));
-          }
-      }
-
-      const resultUrl = page.url();
-      await browser.close();
-
-      return resultUrl !== originalLink ? resultUrl : finalCapturedUrl;
-
-  } catch (error) {
-      if (browser) await browser.close();
-      throw new Error(`Puppeteer 解析失败: ${error.message}`);
-  }
+    };
 }
-        return finalUrl;
+
+// 2. 修复解析运行时间的函数结构
+function parseRunHours(raw) {
+    if (Array.isArray(raw)) return raw.map(Number);
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.map(Number) : [];
+    } catch {
+        return [];
+    }
+}
+
+// 3. 独立且修复好的重定向与代理解析函数（包含参数提取强行兜底）
+async function resolveFinalUrl(originalLink, proxyUrl, referer) {
+    let browser = null;
+    try {
+        const args = [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage'
+        ];
+
+        let proxyAuth = null;
+        if (proxyUrl && proxyUrl.trim()) {
+            try {
+                let cleanProxy = proxyUrl.trim();
+                let host, port, username, password;
+
+                if (!cleanProxy.includes('://') && cleanProxy.split(':').length === 4) {
+                    const parts = cleanProxy.split(':');
+                    host = parts[0];
+                    port = parts[1];
+                    username = parts[2];
+                    password = parts[3];
+                    args.push(`--proxy-server=http://${host}:${port}`);
+                    proxyAuth = { username, password };
+                } else if (!cleanProxy.includes('://') && cleanProxy.split(':').length === 2) {
+                    args.push(`--proxy-server=http://${cleanProxy}`);
+                } else {
+                    if (!cleanProxy.startsWith('http://') && !cleanProxy.startsWith('https://')) {
+                        cleanProxy = 'http://' + cleanProxy;
+                    }
+                    const parsedProxy = new URL(cleanProxy);
+                    args.push(`--proxy-server=http://${parsedProxy.hostname}:${parsedProxy.port}`);
+                    if (parsedProxy.username || parsedProxy.password) {
+                        proxyAuth = {
+                            username: decodeURIComponent(parsedProxy.username),
+                            password: decodeURIComponent(parsedProxy.password)
+                        };
+                    }
+                }
+            } catch (e) {
+                console.error("代理 URL 解析失败:", e.message);
+            }
+        }
+
+        browser = await puppeteer.launch({
+            headless: true,
+            args: args
+        });
+
+        const page = await browser.newPage();
+
+        if (proxyAuth) {
+            await page.authenticate(proxyAuth);
+        }
+
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+        
+        if (referer) {
+            await page.setExtraHTTPHeaders({ 'Referer': referer });
+        }
+
+        let finalCapturedUrl = originalLink;
+
+        page.on('framenavigated', frame => {
+            if (frame === page.mainFrame()) {
+                finalCapturedUrl = frame.url();
+            }
+        });
+
+        await page.goto(originalLink, {
+            waitUntil: 'networkidle0',
+            timeout: 45000
+        }).catch(() => {});
+
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        let currentUrl = page.url();
+
+        // 兜底逻辑：如果最终网页依然停留在追踪域名，尝试直接解析 url= 参数并跳转
+        if (currentUrl.includes('click.quk.com') || currentUrl === originalLink) {
+            try {
+                const parsed = new URL(originalLink);
+                const targetUrlParam = parsed.searchParams.get('url');
+                if (targetUrlParam) {
+                    const directTarget = decodeURIComponent(targetUrlParam);
+                    console.log(`[QUK 兜底处理] 侦测到未自动跳转，直接打开目标 URL: ${directTarget}`);
+                    await page.goto(directTarget, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    currentUrl = page.url();
+                }
+            } catch (err) {
+                console.error("提取 url 参数解析失败:", err.message);
+            }
+        }
+
+        await browser.close();
+
+        return currentUrl !== originalLink ? currentUrl : finalCapturedUrl;
 
     } catch (error) {
         if (browser) await browser.close();
