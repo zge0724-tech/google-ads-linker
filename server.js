@@ -2,8 +2,6 @@ const puppeteer = require('puppeteer');
 const express = require('express');
 const path = require('path');
 const cron = require('node-cron');
-const axios = require('axios');
-const { HttpsProxyAgent } = require('https-proxy-agent');
 const { DatabaseSync } = require('node:sqlite');
 
 const app = express();
@@ -13,42 +11,36 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const db = new DatabaseSync(path.join(__dirname, 'data.db'));
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    alliance_name TEXT NOT NULL,
-    original_link TEXT NOT NULL,
-    proxy_url TEXT NOT NULL,
-    expected_domain TEXT NOT NULL,
-    mcc_id TEXT DEFAULT '',
-    ads_account_id TEXT DEFAULT '',
-    campaign_name TEXT NOT NULL UNIQUE,
-    run_frequency INTEGER NOT NULL DEFAULT 60,
-    run_hours TEXT NOT NULL DEFAULT '[]',
-    referer TEXT DEFAULT '',
-    notes TEXT DEFAULT '',
-    final_url TEXT DEFAULT '',
-    last_run_at TEXT,
-    last_updated TEXT,
-    last_error TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now'))
-  )
-`);
+let db;
+try {
+    db = new DatabaseSync(path.join(__dirname, 'data.db'));
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        alliance_name TEXT NOT NULL,
+        original_link TEXT NOT NULL,
+        proxy_url TEXT NOT NULL,
+        expected_domain TEXT NOT NULL,
+        mcc_id TEXT DEFAULT '',
+        ads_account_id TEXT DEFAULT '',
+        campaign_name TEXT NOT NULL UNIQUE,
+        run_frequency INTEGER NOT NULL DEFAULT 60,
+        run_hours TEXT NOT NULL DEFAULT '[]',
+        referer TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        final_url TEXT DEFAULT '',
+        last_run_at TEXT,
+        last_updated TEXT,
+        last_error TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+} catch (err) {
+    console.error("数据库初始化失败，请确保 Node.js 版本在 v22.5.0 以上:", err.message);
+}
 
 const runningTasks = new Set();
 
-// 1. 补全缺失的数据库行转换函数
-function rowToTask(row) {
-    if (!row) return null;
-    return {
-        ...row,
-        run_hours: parseRunHours(row.run_hours)
-    };
-}
-
-// 2. 修复解析运行时间的函数结构
 function parseRunHours(raw) {
     if (Array.isArray(raw)) return raw.map(Number);
     try {
@@ -59,14 +51,58 @@ function parseRunHours(raw) {
     }
 }
 
-// 3. 独立且修复好的重定向与代理解析函数（包含参数提取强行兜底）
-async function resolveFinalUrl(originalLink, proxyUrl, referer) {
+function rowToTask(row) {
+    if (!row) return null;
+    return {
+        ...row,
+        run_hours: parseRunHours(row.run_hours)
+    };
+}
+
+async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) {
+    // 转换工具函数：取 ? 及其之后的参数部分，并前置拼接 {lpurl}
+    const convertToLpurl = (fullUrl) => {
+        if (!fullUrl) return '{lpurl}';
+        try {
+            const parsed = new URL(fullUrl);
+            if (parsed.search) {
+                return `{lpurl}${parsed.search}`;
+            }
+        } catch (e) {
+            if (fullUrl.includes('?')) {
+                const searchStr = fullUrl.substring(fullUrl.indexOf('?'));
+                return `{lpurl}${searchStr}`;
+            }
+        }
+        return '{lpurl}';
+    };
+
+    // 1. 通用静态参数解析：穷举常见的目标 URL 参数名称（url, u, target, deep_link, link, dest等）
+    try {
+        const parsedOriginal = new URL(originalLink);
+        const possibleParamNames = ['url', 'u', 'target', 'deep_link', 'link', 'dest', 'm', 'redirect'];
+        for (const param of possibleParamNames) {
+            const val = parsedOriginal.searchParams.get(param);
+            if (val && val.includes('?')) {
+                const decoded = decodeURIComponent(val);
+                console.log(`[静态多参数提取成功] 参数名 ${param}: ${decoded}`);
+                return convertToLpurl(decoded);
+            }
+        }
+    } catch (e) {
+        console.error("静态参数解析失败:", e.message);
+    }
+
     let browser = null;
     try {
         const args = [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage'
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu'
         ];
 
         let proxyAuth = null;
@@ -105,7 +141,8 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer) {
 
         browser = await puppeteer.launch({
             headless: true,
-            args: args
+            args: args,
+            timeout: 60000
         });
 
         const page = await browser.newPage();
@@ -120,46 +157,64 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer) {
             await page.setExtraHTTPHeaders({ 'Referer': referer });
         }
 
-        let finalCapturedUrl = originalLink;
+        let capturedUrls = [];
+
+        // 全局监控 HTTP 301/302/307/308 重定向链中的每一个 Location URL
+        page.on('response', response => {
+            const status = response.status();
+            if (status >= 300 && status < 400) {
+                const location = response.headers()['location'];
+                if (location && location.includes('?')) {
+                    capturedUrls.push(location);
+                }
+            }
+        });
+
+        page.on('request', req => {
+            const reqUrl = req.url();
+            if (reqUrl.includes('?') && !reqUrl.match(/\.(png|jpg|jpeg|gif|svg|css|js|woff2?)$/i)) {
+                capturedUrls.push(reqUrl);
+            }
+        });
 
         page.on('framenavigated', frame => {
             if (frame === page.mainFrame()) {
-                finalCapturedUrl = frame.url();
+                capturedUrls.push(frame.url());
             }
         });
 
         await page.goto(originalLink, {
-            waitUntil: 'networkidle0',
+            waitUntil: 'domcontentloaded',
             timeout: 45000
         }).catch(() => {});
 
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
         let currentUrl = page.url();
 
-        // 兜底逻辑：如果最终网页依然停留在追踪域名，尝试直接解析 url= 参数并跳转
-        if (currentUrl.includes('click.quk.com') || currentUrl === originalLink) {
-            try {
-                const parsed = new URL(originalLink);
-                const targetUrlParam = parsed.searchParams.get('url');
-                if (targetUrlParam) {
-                    const directTarget = decodeURIComponent(targetUrlParam);
-                    console.log(`[QUK 兜底处理] 侦测到未自动跳转，直接打开目标 URL: ${directTarget}`);
-                    await page.goto(directTarget, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
-                    await new Promise(resolve => setTimeout(resolve, 3000));
-                    currentUrl = page.url();
-                }
-            } catch (err) {
-                console.error("提取 url 参数解析失败:", err.message);
-            }
-        }
-
         await browser.close();
 
-        return currentUrl !== originalLink ? currentUrl : finalCapturedUrl;
+        // 优先在所有拦截到的中间 URL 中找到带有关键追踪参数（如 irclickid, utm_, gclid 等）的 URL
+        const trackedUrl = capturedUrls.reverse().find(u => 
+            u.includes('?') && (u.includes('irclickid') || u.includes('click') || u.includes('utm_') || u.includes('subid'))
+        );
+
+        if (trackedUrl) {
+            console.log(`[抓包捕获核心追踪参数成功]: ${trackedUrl}`);
+            return convertToLpurl(trackedUrl);
+        }
+
+        const anyParamUrl = capturedUrls.find(u => u.includes('?'));
+        if (anyParamUrl) {
+            return convertToLpurl(anyParamUrl);
+        }
+
+        return convertToLpurl(currentUrl);
 
     } catch (error) {
-        if (browser) await browser.close();
+        if (browser) {
+            try { await browser.close(); } catch(e) {}
+        }
         throw new Error(`Puppeteer 解析失败: ${error.message}`);
     }
 }
@@ -172,14 +227,12 @@ async function processTask(task) {
     const finalUrl = await resolveFinalUrl(
       task.original_link,
       task.proxy_url,
-      task.referer
+      task.referer,
+      task.expected_domain
     );
 
-    const expected = task.expected_domain.toLowerCase().trim();
-    const finalLower = (finalUrl || '').toLowerCase();
-
-    if (!finalLower.includes(expected)) {
-      const errMsg = `域名校验失败: Final URL "${finalUrl}" 不包含预期域名 "${task.expected_domain}"`;
+    if (!finalUrl) {
+      const errMsg = `抓取结果为空`;
       db.prepare(
         `UPDATE tasks SET last_error = ?, last_run_at = datetime('now') WHERE id = ?`
       ).run(errMsg, task.id);
@@ -218,6 +271,7 @@ function shouldRunTask(task, now) {
 
 cron.schedule('* * * * *', () => {
   const now = new Date();
+  if (!db) return;
   const tasks = db.prepare('SELECT * FROM tasks').all().map(rowToTask);
 
   for (const task of tasks) {
@@ -235,14 +289,22 @@ app.get('/api/info', (_req, res) => {
 });
 
 app.get('/api/tasks', (_req, res) => {
-  const tasks = db.prepare('SELECT * FROM tasks ORDER BY id DESC').all().map(rowToTask);
-  res.json(tasks);
+  try {
+    const tasks = db.prepare('SELECT * FROM tasks ORDER BY id DESC').all().map(rowToTask);
+    res.json(tasks);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('/api/tasks/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
-  if (!row) return res.status(404).json({ error: '任务不存在' });
-  res.json(rowToTask(row));
+  try {
+    const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+    if (!row) return res.status(404).json({ error: '任务不存在' });
+    res.json(rowToTask(row));
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/api/tasks', (req, res) => {
@@ -346,19 +408,27 @@ app.put('/api/tasks/:id', (req, res) => {
 });
 
 app.delete('/api/tasks/:id', (req, res) => {
-  const result = db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
-  if (result.changes === 0) return res.status(404).json({ error: '任务不存在' });
-  res.json({ success: true });
+  try {
+    const result = db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
+    if (result.changes === 0) return res.status(404).json({ error: '任务不存在' });
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/api/tasks/:id/run', async (req, res) => {
-  const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
-  if (!row) return res.status(404).json({ error: '任务不存在' });
+  try {
+    const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+    if (!row) return res.status(404).json({ error: '任务不存在' });
 
-  const task = rowToTask(row);
-  await processTask(task);
-  const updated = rowToTask(db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
-  res.json(updated);
+    const task = rowToTask(row);
+    await processTask(task);
+    const updated = rowToTask(db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
+    res.json(updated);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('/ashx/gettemplate.ashx', (req, res) => {
@@ -377,69 +447,11 @@ app.get('/ashx/gettemplate.ashx', (req, res) => {
   res.type('text/plain').send(row?.final_url || '');
 });
 
-app.get('/api/ads-script', (req, res) => {
-  const script = generateAdsScript(BASE_URL);
-  res.type('text/plain').send(script);
+// 全局 500 错误捕获
+app.use((err, req, res, next) => {
+  console.error('服务器内部错误:', err);
+  res.status(500).json({ error: err.message || '服务器内部错误' });
 });
-
-function generateAdsScript(baseUrl) {
-  return `/**
- * Google Ads 自动换链脚本
- * 将此脚本添加到 Google Ads -> 工具与设置 -> 批量操作 -> 脚本
- * 建议设置每日定时运行
- */
-function main() {
-  var campaignName = AdsApp.currentAccount().getName(); // 或手动指定广告系列名称
-  var apiUrl = '${baseUrl}/ashx/gettemplate.ashx?campaign_name=' + encodeURIComponent(campaignName);
-
-  var response = UrlFetchApp.fetch(apiUrl, { muteHttpExceptions: true });
-  var finalUrl = response.getContentText().trim();
-
-  if (!finalUrl) {
-    Logger.log('未获取到 Final URL，跳过更新');
-    return;
-  }
-
-  Logger.log('获取到 Final URL: ' + finalUrl);
-
-  var campaignIterator = AdsApp.campaigns()
-    .withCondition('Name = "' + campaignName + '"')
-    .get();
-
-  if (!campaignIterator.hasNext()) {
-    Logger.log('未找到广告系列: ' + campaignName);
-    return;
-  }
-
-  var campaign = campaignIterator.next();
-  var adGroupIterator = campaign.adGroups().get();
-
-  while (adGroupIterator.hasNext()) {
-    var adGroup = adGroupIterator.next();
-    var adIterator = adGroup.ads().get();
-
-    while (adIterator.hasNext()) {
-      var ad = adIterator.next();
-      if (ad.isType().responsiveSearchAd()) {
-        // 响应式搜索广告需通过 adGroup 更新 Final URL
-        continue;
-      }
-      try {
-        var urls = ad.urls();
-        if (urls.getFinalUrl() !== finalUrl) {
-          urls.setFinalUrl(finalUrl);
-          Logger.log('已更新广告 Final URL -> ' + finalUrl);
-        }
-      } catch (e) {
-        Logger.log('更新广告失败: ' + e.message);
-      }
-    }
-  }
-
-  Logger.log('换链完成');
-}
-`;
-}
 
 app.listen(PORT, () => {
   console.log(`Google Ads Linker running at ${BASE_URL}`);
