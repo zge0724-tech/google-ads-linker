@@ -3,7 +3,7 @@ const path = require('path');
 const cron = require('node-cron');
 const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
-const Database = require('better-sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,7 +12,7 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const db = new Database(path.join(__dirname, 'data.db'));
+const db = new DatabaseSync(path.join(__dirname, 'data.db'));
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS tasks (
