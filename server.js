@@ -118,16 +118,11 @@ async function processTask(task) {
   runningTasks.add(task.id);
 
   try {
-    const response = await resolveFinalUrl(
+    const finalUrl = await resolveFinalUrl(
       task.original_link,
       task.proxy_url,
       task.referer
-    );
-
-    let finalUrl = response.request?.res?.responseUrl;
-    if (!finalUrl) {
-      finalUrl = response.request?.responseURL || response.config.url;
-    }
+  );
 
     const expected = task.expected_domain.toLowerCase().trim();
     const finalLower = (finalUrl || '').toLowerCase();
