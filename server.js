@@ -1,3 +1,4 @@
+const puppeteer = require('puppeteer'); 
 const express = require('express');
 const path = require('path');
 const cron = require('node-cron');
@@ -55,20 +56,61 @@ function rowToTask(row) {
   };
 }
 
-function resolveFinalUrl(originalLink, proxyUrl, referer) {
-  const agent = new HttpsProxyAgent(proxyUrl);
-  return axios.get(originalLink, {
-    maxRedirects: 15,
-    timeout: 60000,
-    httpAgent: agent,
-    httpsAgent: agent,
-    headers: {
-      Referer: referer || '',
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    },
-    validateStatus: (status) => status >= 200 && status < 400,
-  });
+async function resolveFinalUrl(originalLink, proxyUrl, referer) {
+  let browser = null;
+  try {
+      const args = [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage'
+      ];
+
+      let proxyAuth = null;
+      if (proxyUrl) {
+          try {
+              const parsedProxy = new URL(proxyUrl);
+              args.push(`--proxy-server=${parsedProxy.protocol}//${parsedProxy.host}`);
+              if (parsedProxy.username || parsedProxy.password) {
+                  proxyAuth = {
+                      username: decodeURIComponent(parsedProxy.username),
+                      password: decodeURIComponent(parsedProxy.password)
+                  };
+              }
+          } catch (e) {
+              console.error("代理解析失败:", e.message);
+          }
+      }
+
+      browser = await puppeteer.launch({
+          headless: true,
+          args: args
+      });
+
+      const page = await browser.newPage();
+
+      if (proxyAuth) {
+          await page.authenticate(proxyAuth);
+      }
+
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+      
+      if (referer) {
+          await page.setExtraHTTPHeaders({ 'Referer': referer });
+      }
+
+      await page.goto(originalLink, {
+          waitUntil: 'networkidle2',
+          timeout: 45000
+      });
+
+      const finalUrl = page.url();
+      await browser.close();
+      return finalUrl;
+
+  } catch (error) {
+      if (browser) await browser.close();
+      throw new Error(`Puppeteer 解析失败: ${error.message}`);
+  }
 }
 
 async function processTask(task) {
