@@ -39,100 +39,109 @@ db.exec(`
 
 const runningTasks = new Set();
 
+// 1. 补全缺失的数据库行转换函数
+function rowToTask(row) {
+    if (!row) return null;
+    return {
+        ...row,
+        run_hours: parseRunHours(row.run_hours)
+    };
+}
+
+// 2. 修复解析运行时间的函数结构
 function parseRunHours(raw) {
-  if (Array.isArray(raw)) return raw.map(Number);
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(Number) : [];
-  } catch {
-    return [];
-  }
-  async function resolveFinalUrl(originalLink, proxyUrl, referer) {
+    if (Array.isArray(raw)) return raw.map(Number);
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.map(Number) : [];
+    } catch {
+        return [];
+    }
+}
+
+// 3. 独立且修复好的重定向与代理解析函数
+async function resolveFinalUrl(originalLink, proxyUrl, referer) {
     let browser = null;
     try {
         const args = [
             '--no-sandbox',
-            async function resolveFinalUrl(originalLink, proxyUrl, referer) {
-              let browser = null;
-              try {
-                  const args = [
-                      '--no-sandbox',
-                      '--disable-setuid-sandbox',
-                      '--disable-dev-shm-usage'
-                  ];
-          
-                  let proxyAuth = null;
-                  if (proxyUrl && proxyUrl.trim()) {
-                      try {
-                          let cleanProxy = proxyUrl.trim();
-                          let host, port, username, password;
-          
-                          // 格式 1: ip:port:username:password
-                          if (!cleanProxy.includes('://') && cleanProxy.split(':').length === 4) {
-                              const parts = cleanProxy.split(':');
-                              host = parts[0];
-                              port = parts[1];
-                              username = parts[2];
-                              password = parts[3];
-                              args.push(`--proxy-server=http://${host}:${port}`);
-                              proxyAuth = { username, password };
-                          } 
-                          // 格式 2: ip:port
-                          else if (!cleanProxy.includes('://') && cleanProxy.split(':').length === 2) {
-                              args.push(`--proxy-server=http://${cleanProxy}`);
-                          } 
-                          // 格式 3: http://user:pass@ip:port 或标准 URL 格式
-                          else {
-                              if (!cleanProxy.startsWith('http://') && !cleanProxy.startsWith('https://')) {
-                                  cleanProxy = 'http://' + cleanProxy;
-                              }
-                              const parsedProxy = new URL(cleanProxy);
-                              args.push(`--proxy-server=http://${parsedProxy.hostname}:${parsedProxy.port}`);
-                              if (parsedProxy.username || parsedProxy.password) {
-                                  proxyAuth = {
-                                      username: decodeURIComponent(parsedProxy.username),
-                                      password: decodeURIComponent(parsedProxy.password)
-                                  };
-                              }
-                          }
-                      } catch (e) {
-                          console.error("代理 URL 解析失败:", e.message);
-                      }
-                  }
-          
-                  browser = await puppeteer.launch({
-                      headless: true,
-                      args: args
-                  });
-          
-                  const page = await browser.newPage();
-          
-                  if (proxyAuth) {
-                      await page.authenticate(proxyAuth);
-                  }
-          
-                  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-                  
-                  if (referer) {
-                      await page.setExtraHTTPHeaders({ 'Referer': referer });
-                  }
-          
-                  await page.goto(originalLink, {
-                      waitUntil: 'domcontentloaded',
-                      timeout: 30000
-                  });
-          
-                  await new Promise(resolve => setTimeout(resolve, 3000));
-          
-                  const finalUrl = page.url();
-                  await browser.close();
-                  return finalUrl;
-          
-              } catch (error) {
-                  if (browser) await browser.close();
-                  throw new Error(`Puppeteer 解析失败: ${error.message}`);
-              }
-          }
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage'
+        ];
+
+        let proxyAuth = null;
+        if (proxyUrl && proxyUrl.trim()) {
+            try {
+                let cleanProxy = proxyUrl.trim();
+                let host, port, username, password;
+
+                // 格式 1: ip:port:username:password
+                if (!cleanProxy.includes('://') && cleanProxy.split(':').length === 4) {
+                    const parts = cleanProxy.split(':');
+                    host = parts[0];
+                    port = parts[1];
+                    username = parts[2];
+                    password = parts[3];
+                    args.push(`--proxy-server=http://${host}:${port}`);
+                    proxyAuth = { username, password };
+                } 
+                // 格式 2: ip:port
+                else if (!cleanProxy.includes('://') && cleanProxy.split(':').length === 2) {
+                    args.push(`--proxy-server=http://${cleanProxy}`);
+                } 
+                // 格式 3: http://user:pass@ip:port 或标准 URL 格式
+                else {
+                    if (!cleanProxy.startsWith('http://') && !cleanProxy.startsWith('https://')) {
+                        cleanProxy = 'http://' + cleanProxy;
+                    }
+                    const parsedProxy = new URL(cleanProxy);
+                    args.push(`--proxy-server=http://${parsedProxy.hostname}:${parsedProxy.port}`);
+                    if (parsedProxy.username || parsedProxy.password) {
+                        proxyAuth = {
+                            username: decodeURIComponent(parsedProxy.username),
+                            password: decodeURIComponent(parsedProxy.password)
+                        };
+                    }
+                }
+            } catch (e) {
+                console.error("代理 URL 解析失败:", e.message);
+            }
+        }
+
+        browser = await puppeteer.launch({
+            headless: true,
+            args: args
+        });
+
+        const page = await browser.newPage();
+
+        if (proxyAuth) {
+            await page.authenticate(proxyAuth);
+        }
+
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+        
+        if (referer) {
+            await page.setExtraHTTPHeaders({ 'Referer': referer });
+        }
+
+        await page.goto(originalLink, {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        const finalUrl = page.url();
+        await browser.close();
+        return finalUrl;
+
+    } catch (error) {
+        if (browser) await browser.close();
+        throw new Error(`Puppeteer 解析失败: ${error.message}`);
+    }
+}
+
 async function processTask(task) {
   if (runningTasks.has(task.id)) return;
   runningTasks.add(task.id);
@@ -142,7 +151,7 @@ async function processTask(task) {
       task.original_link,
       task.proxy_url,
       task.referer
-  );
+    );
 
     const expected = task.expected_domain.toLowerCase().trim();
     const finalLower = (finalUrl || '').toLowerCase();
