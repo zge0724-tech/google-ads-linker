@@ -59,7 +59,7 @@ function parseRunHours(raw) {
     }
 }
 
-// 3. 独立且修复好的重定向与代理解析函数
+// 3. 独立且修复好的重定向与代理解析函数（增强了对 JS 重定向的等待与捕捉）
 async function resolveFinalUrl(originalLink, proxyUrl, referer) {
     let browser = null;
     try {
@@ -125,12 +125,14 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer) {
             await page.setExtraHTTPHeaders({ 'Referer': referer });
         }
 
+        // 修改：等待网络连接彻底空闲 (networkidle2)，避免中间追踪页刚加载就退出
         await page.goto(originalLink, {
-            waitUntil: 'domcontentloaded',
-            timeout: 30000
+            waitUntil: 'networkidle2',
+            timeout: 45000
         });
 
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // 强制等待 5 秒，确保页面内部 JS 异步跳转/追踪脚本执行完成
+        await new Promise(resolve => setTimeout(resolve, 5000));
 
         const finalUrl = page.url();
         await browser.close();
