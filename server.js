@@ -79,6 +79,19 @@ function rowToTask(row) {
 }
 
 async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) {
+    // --- 核心优化 1：自动补全联盟链接末尾的目标商家网址 ---
+    let finalOriginalLink = originalLink.trim();
+    if (expectedDomain && expectedDomain.trim()) {
+        const cleanDomain = expectedDomain.trim();
+        const targetUrl = cleanDomain.startsWith('http') ? cleanDomain : `https://${cleanDomain}`;
+        
+        // 匹配 url=, redirect=, dest= 等常见的中间跳转参数结尾
+        if (/(url|redirect|dest|link)=$/i.test(finalOriginalLink)) {
+            finalOriginalLink = finalOriginalLink + targetUrl;
+            console.log(`[自动补全联盟链接] -> 拼接商家网址后: ${finalOriginalLink}`);
+        }
+    }
+
     const convertToLpurl = (fullUrl) => {
         if (!fullUrl) return '{lpurl}';
         try {
@@ -188,12 +201,13 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
             }
         });
 
-        await page.goto(originalLink, {
+        // --- 使用自动补全后的 finalOriginalLink 进行导航 ---
+        await page.goto(finalOriginalLink, {
             waitUntil: 'networkidle2',
             timeout: 45000
         }).catch(() => {});
 
-        await new Promise(resolve => setTimeout(resolve, 4000));
+        await new Promise(resolve => setTimeout(resolve, 5000));
 
         const finalPageUrl = page.url();
         capturedUrls.push(finalPageUrl);
@@ -323,7 +337,6 @@ app.get('/api/info', (_req, res) => {
   });
 });
 
-// 获取 KPI 顶栏统计数据
 app.get('/api/stats', (_req, res) => {
     try {
         const total = db.prepare('SELECT COUNT(*) as count FROM tasks WHERE is_deleted = 0').get().count;
@@ -332,19 +345,12 @@ app.get('/api/stats', (_req, res) => {
         const deleted = db.prepare('SELECT COUNT(*) as count FROM tasks WHERE is_deleted = 1').get().count;
         const totalRuns = db.prepare('SELECT SUM(run_count) as total FROM tasks').get().total || 0;
 
-        res.json({
-            total,
-            active,
-            paused,
-            deleted,
-            totalRuns
-        });
+        res.json({ total, active, paused, deleted, totalRuns });
     } catch(e) {
         res.status(500).json({ error: e.message });
     }
 });
 
-// 获取所有联盟列表 (供筛选下拉框)
 app.get('/api/alliances', (_req, res) => {
     try {
         const rows = db.prepare('SELECT DISTINCT alliance_name FROM tasks WHERE is_deleted = 0').all();
@@ -355,7 +361,6 @@ app.get('/api/alliances', (_req, res) => {
     }
 });
 
-// 获取任务列表
 app.get('/api/tasks', (req, res) => {
   try {
     const { alliance, status, campaign_name } = req.query;
@@ -394,7 +399,6 @@ app.get('/api/tasks/:id', (req, res) => {
   }
 });
 
-// 新建任务：创建后后台异步自动运行
 app.post('/api/tasks', (req, res) => {
   const {
     alliance_name,
@@ -438,7 +442,6 @@ app.post('/api/tasks', (req, res) => {
       db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid)
     );
 
-    // 异步自动触发首次抓取
     processTask(task);
 
     res.status(201).json(task);
@@ -450,7 +453,6 @@ app.post('/api/tasks', (req, res) => {
   }
 });
 
-// 修改任务状态 (active / paused)
 app.patch('/api/tasks/:id/status', (req, res) => {
   const { status } = req.body;
   if (!['active', 'paused'].includes(status)) {
@@ -468,7 +470,6 @@ app.patch('/api/tasks/:id/status', (req, res) => {
   }
 });
 
-// 编辑更新任务
 app.put('/api/tasks/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: '任务不存在' });
@@ -518,7 +519,6 @@ app.put('/api/tasks/:id', (req, res) => {
   }
 });
 
-// 软删除任务
 app.delete('/api/tasks/:id', (req, res) => {
   try {
     const result = db.prepare('UPDATE tasks SET is_deleted = 1 WHERE id = ?').run(req.params.id);
@@ -529,7 +529,6 @@ app.delete('/api/tasks/:id', (req, res) => {
   }
 });
 
-// 手动触发一次抓取
 app.post('/api/tasks/:id/run', async (req, res) => {
   try {
     const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
@@ -544,7 +543,6 @@ app.post('/api/tasks/:id/run', async (req, res) => {
   }
 });
 
-// 提供给 Google Ads 脚本抓取的接口
 app.get('/ashx/gettemplate.ashx', (req, res) => {
   const { campaign_name } = req.query;
   if (!campaign_name) {
