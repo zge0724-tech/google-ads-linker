@@ -60,7 +60,6 @@ function rowToTask(row) {
 }
 
 async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) {
-    // 转换工具函数：取 ? 及其之后的参数部分，并前置拼接 {lpurl}
     const convertToLpurl = (fullUrl) => {
         if (!fullUrl) return '{lpurl}';
         try {
@@ -70,27 +69,19 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
             }
         } catch (e) {
             if (fullUrl.includes('?')) {
-                const searchStr = fullUrl.substring(fullUrl.indexOf('?'));
-                return `{lpurl}${searchStr}`;
+                return `{lpurl}${fullUrl.substring(fullUrl.indexOf('?'))}`;
             }
         }
         return '{lpurl}';
     };
 
-    // 1. 通用静态参数解析：穷举常见的目标 URL 参数名称（url, u, target, deep_link, link, dest等）
+    // 提取预期域名的主关键词 (如从 "https://patrickta.com/" 提取出 "patrickta")
+    let cleanDomainKeyword = '';
     try {
-        const parsedOriginal = new URL(originalLink);
-        const possibleParamNames = ['url', 'u', 'target', 'deep_link', 'link', 'dest', 'm', 'redirect'];
-        for (const param of possibleParamNames) {
-            const val = parsedOriginal.searchParams.get(param);
-            if (val && val.includes('?')) {
-                const decoded = decodeURIComponent(val);
-                console.log(`[静态多参数提取成功] 参数名 ${param}: ${decoded}`);
-                return convertToLpurl(decoded);
-            }
-        }
-    } catch (e) {
-        console.error("静态参数解析失败:", e.message);
+        const domainUrl = new URL(expectedDomain.startsWith('http') ? expectedDomain : `https://${expectedDomain}`);
+        cleanDomainKeyword = domainUrl.hostname.replace('www.', '').split('.')[0];
+    } catch(e) {
+        cleanDomainKeyword = expectedDomain;
     }
 
     let browser = null;
@@ -159,7 +150,7 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
 
         let capturedUrls = [];
 
-        // 全局监控 HTTP 301/302/307/308 重定向链中的每一个 Location URL
+        // 监控 HTTP 重定向中的 Location 头
         page.on('response', response => {
             const status = response.status();
             if (status >= 300 && status < 400) {
@@ -170,6 +161,7 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
             }
         });
 
+        // 监控所有资源/页面请求
         page.on('request', req => {
             const reqUrl = req.url();
             if (reqUrl.includes('?') && !reqUrl.match(/\.(png|jpg|jpeg|gif|svg|css|js|woff2?)$/i)) {
@@ -177,39 +169,47 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
             }
         });
 
+        // 监控主框架导航
         page.on('framenavigated', frame => {
             if (frame === page.mainFrame()) {
                 capturedUrls.push(frame.url());
             }
         });
 
+        // 导航至原始链接，等待网络基本空闲
         await page.goto(originalLink, {
-            waitUntil: 'domcontentloaded',
+            waitUntil: 'networkidle2',
             timeout: 45000
         }).catch(() => {});
 
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // 额外延迟等待，确保前端 JS 完成 Impact/SJV 联盟脚本重定向与注入
+        await new Promise(resolve => setTimeout(resolve, 4000));
 
-        let currentUrl = page.url();
+        const finalPageUrl = page.url();
+        capturedUrls.push(finalPageUrl);
 
         await browser.close();
 
-        // 优先在所有拦截到的中间 URL 中找到带有关键追踪参数（如 irclickid, utm_, gclid 等）的 URL
-        const trackedUrl = capturedUrls.reverse().find(u => 
-            u.includes('?') && (u.includes('irclickid') || u.includes('click') || u.includes('utm_') || u.includes('subid'))
-        );
+        // 1. 优先定位：同时满足【匹配目标域名】且【包含联盟追踪参数 (irclickid/irgwc/utm/subid等)】的 URL
+        const matchedTrackedUrl = capturedUrls.reverse().find(u => {
+            const hasDomain = cleanDomainKeyword ? u.includes(cleanDomainKeyword) : true;
+            const hasTrackParams = u.includes('irclickid') || u.includes('irgwc') || u.includes('gclid') || u.includes('utm_') || u.includes('subid');
+            return hasDomain && hasTrackParams;
+        });
 
-        if (trackedUrl) {
-            console.log(`[抓包捕获核心追踪参数成功]: ${trackedUrl}`);
-            return convertToLpurl(trackedUrl);
+        if (matchedTrackedUrl) {
+            console.log(`[精准匹配到目标域名追踪参数]: ${matchedTrackedUrl}`);
+            return convertToLpurl(matchedTrackedUrl);
         }
 
-        const anyParamUrl = capturedUrls.find(u => u.includes('?'));
-        if (anyParamUrl) {
-            return convertToLpurl(anyParamUrl);
+        // 2. 次优选择：只要包含目标域名且带有参数
+        const targetWithParams = capturedUrls.find(u => (cleanDomainKeyword ? u.includes(cleanDomainKeyword) : true) && u.includes('?'));
+        if (targetWithParams) {
+            return convertToLpurl(targetWithParams);
         }
 
-        return convertToLpurl(currentUrl);
+        // 3. 兜底选择：使用页面最终停靠的 URL
+        return convertToLpurl(finalPageUrl);
 
     } catch (error) {
         if (browser) {
