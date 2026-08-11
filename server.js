@@ -1,6 +1,7 @@
 const puppeteer = require('puppeteer'); 
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const cron = require('node-cron');
 const { DatabaseSync } = require('node:sqlite');
 
@@ -11,9 +12,20 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// --- 适配 Render 持久化磁盘配置 ---
+// 优先使用环境变量指定的磁盘挂载路径（例如 Render 的 /var/data），没有设置则使用当前目录
+const dbDir = process.env.DATA_DIR || __dirname;
+
+if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+}
+
+const dbPath = path.join(dbDir, 'data.db');
+console.log(`[Database Path] 当前数据库存放路径为: ${dbPath}`);
+
 let db;
 try {
-    db = new DatabaseSync(path.join(__dirname, 'data.db'));
+    db = new DatabaseSync(dbPath);
     
     // 初始化 tasks 数据表
     db.exec(`
@@ -79,13 +91,11 @@ function rowToTask(row) {
 }
 
 async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) {
-    // --- 核心优化 1：自动补全联盟链接末尾的目标商家网址 ---
     let finalOriginalLink = originalLink.trim();
     if (expectedDomain && expectedDomain.trim()) {
         const cleanDomain = expectedDomain.trim();
         const targetUrl = cleanDomain.startsWith('http') ? cleanDomain : `https://${cleanDomain}`;
         
-        // 匹配 url=, redirect=, dest= 等常见的中间跳转参数结尾
         if (/(url|redirect|dest|link)=$/i.test(finalOriginalLink)) {
             finalOriginalLink = finalOriginalLink + targetUrl;
             console.log(`[自动补全联盟链接] -> 拼接商家网址后: ${finalOriginalLink}`);
@@ -201,7 +211,6 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
             }
         });
 
-        // --- 使用自动补全后的 finalOriginalLink 进行导航 ---
         await page.goto(finalOriginalLink, {
             waitUntil: 'networkidle2',
             timeout: 45000
