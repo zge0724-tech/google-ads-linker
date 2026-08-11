@@ -190,12 +190,21 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
 
         await browser.close();
 
-        // 1. 优先定位：匹配目标域名、包含联盟真实追踪参数，且【排除中间跳板特征 (code=, return=, redirect=)】
+        // 定义跳板/中转页特征（包含 code=, return=, redirect=, url=, subId 等）
+        const isIntermediateUrl = (u) => {
+            const lower = u.toLowerCase();
+            return lower.includes('code=') || 
+                   lower.includes('return=') || 
+                   lower.includes('redirect=') || 
+                   lower.includes('url=') || 
+                   lower.includes('subid');
+        };
+
+        // 1. 优先定位：匹配目标域名、包含联盟真实追踪参数，且排除中间跳板特征
         const matchedTrackedUrl = capturedUrls.reverse().find(u => {
             const hasDomain = cleanDomainKeyword ? u.includes(cleanDomainKeyword) : true;
             const hasTrackParams = u.includes('irclickid') || u.includes('irgwc') || u.includes('gclid') || u.includes('utm_');
-            const isIntermediate = u.includes('code=') || u.includes('return=') || u.includes('redirect=');
-            return hasDomain && hasTrackParams && !isIntermediate;
+            return hasDomain && hasTrackParams && !isIntermediateUrl(u);
         });
 
         if (matchedTrackedUrl) {
@@ -203,17 +212,16 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
             return convertToLpurl(matchedTrackedUrl);
         }
 
-        // 2. 次优选择：使用最终页面停靠的地址 finalPageUrl（如果在目标官网且不带中间跳板 code= 参数）
-        if (finalPageUrl.includes('?') && !finalPageUrl.includes('code=')) {
+        // 2. 次优选择：使用最终页面停靠的地址 finalPageUrl（必须不带跳板特征）
+        if (finalPageUrl.includes('?') && !isIntermediateUrl(finalPageUrl)) {
             return convertToLpurl(finalPageUrl);
         }
 
-        // 3. 兜底选择：从历史捕获中挑选匹配 target 域名且不含 code=/return= 的参数链接
+        // 3. 兜底选择：从历史捕获中挑选匹配 target 域名且不含跳板特征的参数链接
         const cleanTarget = capturedUrls.reverse().find(u => 
             (cleanDomainKeyword ? u.includes(cleanDomainKeyword) : true) && 
             u.includes('?') && 
-            !u.includes('code=') && 
-            !u.includes('return=')
+            !isIntermediateUrl(u)
         );
 
         return convertToLpurl(cleanTarget || finalPageUrl);
