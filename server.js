@@ -190,11 +190,12 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
 
         await browser.close();
 
-        // 1. 优先定位：同时满足【匹配目标域名】且【包含联盟追踪参数 (irclickid/irgwc/utm/subid等)】的 URL
+        // 1. 优先定位：匹配目标域名、包含联盟真实追踪参数，且【排除中间跳板特征 (code=, return=, redirect=)】
         const matchedTrackedUrl = capturedUrls.reverse().find(u => {
             const hasDomain = cleanDomainKeyword ? u.includes(cleanDomainKeyword) : true;
-            const hasTrackParams = u.includes('irclickid') || u.includes('irgwc') || u.includes('gclid') || u.includes('utm_') || u.includes('subid');
-            return hasDomain && hasTrackParams;
+            const hasTrackParams = u.includes('irclickid') || u.includes('irgwc') || u.includes('gclid') || u.includes('utm_');
+            const isIntermediate = u.includes('code=') || u.includes('return=') || u.includes('redirect=');
+            return hasDomain && hasTrackParams && !isIntermediate;
         });
 
         if (matchedTrackedUrl) {
@@ -202,14 +203,20 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
             return convertToLpurl(matchedTrackedUrl);
         }
 
-        // 2. 次优选择：只要包含目标域名且带有参数
-        const targetWithParams = capturedUrls.find(u => (cleanDomainKeyword ? u.includes(cleanDomainKeyword) : true) && u.includes('?'));
-        if (targetWithParams) {
-            return convertToLpurl(targetWithParams);
+        // 2. 次优选择：使用最终页面停靠的地址 finalPageUrl（如果在目标官网且不带中间跳板 code= 参数）
+        if (finalPageUrl.includes('?') && !finalPageUrl.includes('code=')) {
+            return convertToLpurl(finalPageUrl);
         }
 
-        // 3. 兜底选择：使用页面最终停靠的 URL
-        return convertToLpurl(finalPageUrl);
+        // 3. 兜底选择：从历史捕获中挑选匹配 target 域名且不含 code=/return= 的参数链接
+        const cleanTarget = capturedUrls.reverse().find(u => 
+            (cleanDomainKeyword ? u.includes(cleanDomainKeyword) : true) && 
+            u.includes('?') && 
+            !u.includes('code=') && 
+            !u.includes('return=')
+        );
+
+        return convertToLpurl(cleanTarget || finalPageUrl);
 
     } catch (error) {
         if (browser) {
