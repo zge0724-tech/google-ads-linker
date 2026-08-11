@@ -1,720 +1,433 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BrandBidding 风险管理后台 - 换链管理</title>
-  <style>
-    :root {
-      --bg: #0f1419;
-      --surface: #1a2332;
-      --surface-hover: #243044;
-      --border: #2d3a4f;
-      --text: #e8edf4;
-      --text-muted: #8b9cb3;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
-      --success: #22c55e;
-      --danger: #ef4444;
-      --warning: #f59e0b;
-      --accent: #6366f1;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      line-height: 1.5;
-    }
-
-    .header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 16px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .logo {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--primary);
-      letter-spacing: -0.5px;
-    }
-
-    .logo span { color: var(--text-muted); font-weight: 400; }
-
-    .api-bar {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 8px 14px;
-      font-size: 13px;
-      font-family: 'Consolas', 'Monaco', monospace;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .api-bar code { color: var(--success); }
-
-    .container {
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 24px;
-    }
-
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      margin-bottom: 24px;
-      overflow: hidden;
-    }
-
-    .card-header {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .card-header h2 {
-      font-size: 15px;
-      font-weight: 600;
-    }
-
-    .card-body { padding: 20px; }
-
-    .form-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
-    }
-
-    @media (max-width: 1024px) {
-      .form-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-
-    @media (max-width: 640px) {
-      .form-grid { grid-template-columns: 1fr; }
-    }
-
-    .form-group { display: flex; flex-direction: column; gap: 6px; }
-    .form-group.full-width { grid-column: 1 / -1; }
-
-    label {
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    input[type="text"],
-    input[type="url"],
-    input[type="number"],
-    textarea,
-    select {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 10px 12px;
-      color: var(--text);
-      font-size: 14px;
-      transition: border-color 0.2s;
-    }
-
-    input:focus, textarea:focus, select:focus {
-      outline: none;
-      border-color: var(--primary);
-    }
-
-    textarea { resize: vertical; min-height: 60px; }
-
-    .hours-grid {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 6px;
-    }
-
-    @media (max-width: 768px) {
-      .hours-grid { grid-template-columns: repeat(6, 1fr); }
-    }
-
-    .hour-check {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 6px 4px;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all 0.15s;
-      user-select: none;
-    }
-
-    .hour-check:hover { border-color: var(--primary); }
-
-    .hour-check input { display: none; }
-
-    .hour-check.checked {
-      background: var(--primary);
-      border-color: var(--primary);
-      color: #fff;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 9px 18px;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .btn-primary { background: var(--primary); color: #fff; }
-    .btn-primary:hover { background: var(--primary-hover); }
-
-    .btn-success { background: var(--success); color: #fff; }
-    .btn-success:hover { opacity: 0.9; }
-
-    .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
-    .btn-danger:hover { background: var(--danger); color: #fff; }
-
-    .btn-secondary {
-      background: var(--surface-hover);
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
-    .btn-secondary:hover { background: var(--border); }
-
-    .btn-sm { padding: 5px 12px; font-size: 12px; }
-
-    .form-actions {
-      grid-column: 1 / -1;
-      display: flex;
-      gap: 10px;
-      margin-top: 8px;
-    }
-
-    .table-wrap { overflow-x: auto; }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
-
-    th {
-      text-align: left;
-      padding: 12px 14px;
-      background: var(--bg);
-      color: var(--text-muted);
-      font-weight: 500;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
-
-    td {
-      padding: 12px 14px;
-      border-bottom: 1px solid var(--border);
-      vertical-align: middle;
-    }
-
-    tr:hover td { background: var(--surface-hover); }
-
-    .url-cell {
-      max-width: 200px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-family: monospace;
-      font-size: 12px;
-      color: var(--success);
-    }
-
-    .status-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 11px;
-      font-weight: 500;
-    }
-
-    .status-ok { background: rgba(34, 197, 94, 0.15); color: var(--success); }
-    .status-err { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
-    .status-pending { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
-
-    .actions { display: flex; gap: 6px; }
-
-    .toast {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px 20px;
-      font-size: 14px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-      transform: translateY(100px);
-      opacity: 0;
-      transition: all 0.3s;
-      z-index: 1000;
-    }
-
-    .toast.show { transform: translateY(0); opacity: 1; }
-    .toast.success { border-color: var(--success); }
-    .toast.error { border-color: var(--danger); }
-
-    .empty-state {
-      text-align: center;
-      padding: 48px 20px;
-      color: var(--text-muted);
-    }
-
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.6);
-      z-index: 200;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .modal-overlay.show { display: flex; }
-
-    .modal {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      width: 90%;
-      max-width: 800px;
-      max-height: 90vh;
-      overflow-y: auto;
-    }
-
-    .modal-header {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .modal-body { padding: 20px; }
-
-    .script-preview {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 16px;
-      font-family: 'Consolas', 'Monaco', monospace;
-      font-size: 12px;
-      line-height: 1.6;
-      max-height: 400px;
-      overflow: auto;
-      white-space: pre-wrap;
-      color: var(--text-muted);
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Ads 链接管理平台</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background-color: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .kpi-card { background: #fff; border-radius: 8px; padding: 18px 24px; border: 1px solid #eef2f5; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .kpi-icon { width: 48px; height: 48px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #fff; }
+        .kpi-title { font-size: 13px; color: #6c757d; margin-bottom: 4px; }
+        .kpi-value { font-size: 26px; font-weight: 700; color: #1e293b; }
+        .filter-box { background: #fff; border-radius: 8px; padding: 16px 24px; margin-top: 20px; border: 1px solid #eef2f5; }
+        .table-container { background: #fff; border-radius: 8px; border: 1px solid #eef2f5; margin-top: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .table { font-size: 13px; margin-bottom: 0; vertical-align: middle; }
+        .table th { background-color: #fafbfc; color: #475569; font-weight: 600; border-bottom: 1px solid #eef2f5; padding: 12px 16px; }
+        .table td { padding: 12px 16px; border-bottom: 1px solid #eef2f5; color: #334155; }
+        .status-badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; display: inline-block; }
+        .status-active { background-color: #e6f4ea; color: #137333; }
+        .status-paused { background-color: #fce8e6; color: #c5221f; }
+        .btn-icon { color: #64748b; padding: 4px 6px; border-radius: 4px; transition: all 0.2s; cursor: pointer; text-decoration: none; }
+        .btn-icon:hover { color: #2563eb; background-color: #eff6ff; }
+        .copy-btn { cursor: pointer; margin-left: 4px; color: #94a3b8; }
+        .copy-btn:hover { color: #2563eb; }
+        .truncate-text { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
+    </style>
 </head>
 <body>
 
-<header class="header">
-  <div class="header-left">
-    <div class="logo">BrandBidding <span>/ 换链管理</span></div>
-    <div class="api-bar">
-      API 根路径: <code id="apiBase">加载中...</code>
+<div class="container-fluid px-4 py-4">
+
+    <!-- 顶部 KPI 统计卡片 -->
+    <div class="row g-3">
+        <div class="col">
+            <div class="kpi-card">
+                <div>
+                    <div class="kpi-title">总链接数</div>
+                    <div class="kpi-value" id="kpi-total">0</div>
+                </div>
+                <div class="kpi-icon" style="background-color: #4f46e5;"><i class="bi bi-link-45deg"></i></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="kpi-card">
+                <div>
+                    <div class="kpi-title">运行中链接数</div>
+                    <div class="kpi-value" id="kpi-active">0</div>
+                </div>
+                <div class="kpi-icon" style="background-color: #16a34a;"><i class="bi bi-play-circle"></i></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="kpi-card">
+                <div>
+                    <div class="kpi-title">已停止链接数</div>
+                    <div class="kpi-value" id="kpi-paused">0</div>
+                </div>
+                <div class="kpi-icon" style="background-color: #eab308;"><i class="bi bi-pause-circle"></i></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="kpi-card">
+                <div>
+                    <div class="kpi-title">已删除链接数</div>
+                    <div class="kpi-value" id="kpi-deleted">0</div>
+                </div>
+                <div class="kpi-icon" style="background-color: #dc2626;"><i class="bi bi-trash"></i></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="kpi-card">
+                <div>
+                    <div class="kpi-title">总运行次数</div>
+                    <div class="kpi-value" id="kpi-runs">0</div>
+                </div>
+                <div class="kpi-icon" style="background-color: #0284c7;"><i class="bi bi-arrow-repeat"></i></div>
+            </div>
+        </div>
     </div>
-  </div>
-  <button class="btn btn-success" id="btnCopyScript">一键复制 Google Ads 脚本</button>
-</header>
 
-<div class="container">
-  <div class="card">
-    <div class="card-header">
-      <h2 id="formTitle">新建换链任务</h2>
+    <!-- 筛选与新增栏 -->
+    <div class="filter-box">
+        <div class="row g-3 align-items-center">
+            <div class="col-auto">
+                <label class="form-label mb-0 text-muted" style="font-size:12px;">联盟</label>
+                <select id="filter-alliance" class="form-select form-select-sm" style="width: 160px;">
+                    <option value="全部">全部</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 text-muted" style="font-size:12px;">运行状态</label>
+                <select id="filter-status" class="form-select form-select-sm" style="width: 140px;">
+                    <option value="全部">全部</option>
+                    <option value="运行中">运行中</option>
+                    <option value="已停止">已停止</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-0 text-muted" style="font-size:12px;">广告系列名称</label>
+                <input type="text" id="filter-campaign" class="form-select form-select-sm" placeholder="请输入名称搜索" style="width: 220px;">
+            </div>
+            <div class="col-auto mt-4">
+                <button class="btn btn-primary btn-sm px-3" onclick="loadTasks()"><i class="bi bi-funnel"></i> 筛选</button>
+                <button class="btn btn-light btn-sm px-3 border ms-1" onclick="resetFilter()"><i class="bi bi-arrow-counterclockwise"></i> 重置</button>
+            </div>
+            <div class="col text-end mt-4">
+                <button class="btn btn-primary btn-sm px-3" onclick="openModal()"><i class="bi bi-plus-lg"></i> 新增链接</button>
+            </div>
+        </div>
     </div>
-    <div class="card-body">
-      <form id="taskForm" class="form-grid">
-        <input type="hidden" id="taskId" value="">
 
-        <div class="form-group">
-          <label for="alliance_name">联盟名称 *</label>
-          <input type="text" id="alliance_name" required placeholder="如：CJ、ShareASale">
-        </div>
-
-        <div class="form-group">
-          <label for="campaign_name">广告系列名称 *</label>
-          <input type="text" id="campaign_name" required placeholder="Google Ads 广告系列名称">
-        </div>
-
-        <div class="form-group">
-          <label for="expected_domain">落地页预期域名 *</label>
-          <input type="text" id="expected_domain" required placeholder="如：example.com">
-        </div>
-
-        <div class="form-group full-width">
-          <label for="original_link">联盟原始链接 *</label>
-          <input type="url" id="original_link" required placeholder="https://affiliate.example.com/track?id=xxx">
-        </div>
-
-        <div class="form-group full-width">
-          <label for="proxy_url">目标国代理 IP *</label>
-          <input type="text" id="proxy_url" required placeholder="http://user:pass@host:port">
-        </div>
-
-        <div class="form-group">
-          <label for="mcc_id">MCC ID</label>
-          <input type="text" id="mcc_id" placeholder="123-456-7890">
-        </div>
-
-        <div class="form-group">
-          <label for="ads_account_id">Google Ads 账号 ID</label>
-          <input type="text" id="ads_account_id" placeholder="987-654-3210">
-        </div>
-
-        <div class="form-group">
-          <label for="run_frequency">运行频率（分钟）</label>
-          <input type="number" id="run_frequency" value="60" min="1" max="1440">
-        </div>
-
-        <div class="form-group full-width">
-          <label for="referer">Referer 伪装</label>
-          <input type="text" id="referer" placeholder="https://www.google.com/">
-        </div>
-
-        <div class="form-group full-width">
-          <label>24 小时运行时间点（勾选允许运行的小时，留空表示全天）</label>
-          <div class="hours-grid" id="hoursGrid"></div>
-        </div>
-
-        <div class="form-group full-width">
-          <label for="notes">备注</label>
-          <textarea id="notes" placeholder="可选备注信息"></textarea>
-        </div>
-
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary" id="btnSubmit">创建任务</button>
-          <button type="button" class="btn btn-secondary" id="btnCancel" style="display:none">取消编辑</button>
-        </div>
-      </form>
+    <!-- 列表数据 -->
+    <div class="table-container">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th width="40"><input type="checkbox"></th>
+                    <th>联盟名称</th>
+                    <th>联盟链接</th>
+                    <th>广告系列名称</th>
+                    <th>落地页链接</th>
+                    <th>频率(分钟)</th>
+                    <th>最后更新时间</th>
+                    <th>最后更换链接时间</th>
+                    <th>运行状态</th>
+                    <th width="160" class="text-center">操作</th>
+                </tr>
+            </thead>
+            <tbody id="task-table-body">
+                <!-- 动态渲染 -->
+            </tbody>
+        </table>
     </div>
-  </div>
 
-  <div class="card">
-    <div class="card-header">
-      <h2>任务列表</h2>
-      <button class="btn btn-secondary btn-sm" id="btnRefresh">刷新</button>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>联盟</th>
-            <th>广告系列</th>
-            <th>预期域名</th>
-            <th>Final URL</th>
-            <th>频率</th>
-            <th>状态</th>
-            <th>最后更新</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="taskTableBody">
-          <tr><td colspan="9" class="empty-state">加载中...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
 </div>
 
-<div class="modal-overlay" id="scriptModal">
-  <div class="modal">
-    <div class="modal-header">
-      <h2>Google Ads 换链脚本</h2>
-      <button class="btn btn-secondary btn-sm" id="btnCloseModal">关闭</button>
-    </div>
-    <div class="modal-body">
-      <p style="margin-bottom:12px;color:var(--text-muted);font-size:13px">
-        将此脚本添加到 Google Ads → 工具与设置 → 批量操作 → 脚本，并设置定时运行。
-      </p>
-      <pre class="script-preview" id="scriptContent"></pre>
-      <div style="margin-top:16px;display:flex;gap:10px">
-        <button class="btn btn-success" id="btnCopyScriptModal">复制脚本</button>
+<!-- 新增/编辑 Modal -->
+<div class="modal fade" id="taskModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTitle">新增链接任务</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="taskForm">
+            <input type="hidden" id="task-id">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">联盟名称 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="form-alliance" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">广告系列名称 (Campaign Name) <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="form-campaign" required>
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">原始联盟链接 (Original Link) <span class="text-danger">*</span></label>
+                    <input type="url" class="form-control" id="form-original" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">预期落地页域名 (Expected Domain) <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="form-domain" placeholder="例如: patrickta.com" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">代理 IP (Proxy URL) <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="form-proxy" placeholder="ip:port:user:pass" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">运行频率 (分钟)</label>
+                    <input type="number" class="form-control" id="form-frequency" value="60" min="1">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">HTTP Referer Header</label>
+                    <input type="text" class="form-control" id="form-referer">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">MCC ID</label>
+                    <input type="text" class="form-control" id="form-mcc">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Ads Account ID</label>
+                    <input type="text" class="form-control" id="form-account">
+                </div>
+            </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light border" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" onclick="saveTask()">提交保存</button>
       </div>
     </div>
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<!-- 查看详情 Modal -->
+<div class="modal fade" id="viewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">任务详情与抓取日志</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="viewModalContent">
+      </div>
+    </div>
+  </div>
+</div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-  const API = window.location.origin;
-  let adsScript = '';
+    let taskModalBS, viewModalBS;
 
-  function showToast(msg, type = 'success') {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.className = `toast show ${type}`;
-    setTimeout(() => t.classList.remove('show'), 3000);
-  }
-
-  function buildHoursGrid() {
-    const grid = document.getElementById('hoursGrid');
-    grid.innerHTML = '';
-    for (let h = 0; h < 24; h++) {
-      const label = document.createElement('label');
-      label.className = 'hour-check';
-      label.innerHTML = `<input type="checkbox" value="${h}">${h}时`;
-      label.querySelector('input').addEventListener('change', (e) => {
-        label.classList.toggle('checked', e.target.checked);
-      });
-      grid.appendChild(label);
-    }
-  }
-
-  function getSelectedHours() {
-    return [...document.querySelectorAll('#hoursGrid input:checked')].map(el => +el.value);
-  }
-
-  function setSelectedHours(hours) {
-    document.querySelectorAll('#hoursGrid input').forEach(input => {
-      const checked = hours.includes(+input.value);
-      input.checked = checked;
-      input.closest('.hour-check').classList.toggle('checked', checked);
+    document.addEventListener("DOMContentLoaded", () => {
+        taskModalBS = new bootstrap.Modal(document.getElementById('taskModal'));
+        viewModalBS = new bootstrap.Modal(document.getElementById('viewModal'));
+        loadStats();
+        loadAlliances();
+        loadTasks();
     });
-  }
 
-  function resetForm() {
-    document.getElementById('taskForm').reset();
-    document.getElementById('taskId').value = '';
-    document.getElementById('run_frequency').value = '60';
-    setSelectedHours([]);
-    document.getElementById('formTitle').textContent = '新建换链任务';
-    document.getElementById('btnSubmit').textContent = '创建任务';
-    document.getElementById('btnCancel').style.display = 'none';
-  }
-
-  async function loadInfo() {
-    try {
-      const res = await fetch(`${API}/api/info`);
-      const data = await res.json();
-      document.getElementById('apiBase').textContent = data.baseUrl;
-    } catch {
-      document.getElementById('apiBase').textContent = API;
+    function copyToClipboard(text) {
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+            alert('已成功复制到剪贴板！');
+        });
     }
-  }
 
-  async function loadAdsScript() {
-    try {
-      const res = await fetch(`${API}/api/ads-script`);
-      adsScript = await res.text();
-    } catch {
-      adsScript = '';
+    async function loadStats() {
+        try {
+            const res = await fetch('/api/stats');
+            const data = await res.json();
+            document.getElementById('kpi-total').innerText = data.total;
+            document.getElementById('kpi-active').innerText = data.active;
+            document.getElementById('kpi-paused').innerText = data.paused;
+            document.getElementById('kpi-deleted').innerText = data.deleted;
+            document.getElementById('kpi-runs').innerText = data.totalRuns;
+        } catch(e){}
     }
-  }
 
-  async function loadTasks() {
-    const tbody = document.getElementById('taskTableBody');
-    try {
-      const res = await fetch(`${API}/api/tasks`);
-      const tasks = await res.json();
+    async function loadAlliances() {
+        try {
+            const res = await fetch('/api/alliances');
+            const alliances = await res.json();
+            const select = document.getElementById('filter-alliance');
+            select.innerHTML = '<option value="全部">全部</option>';
+            alliances.forEach(a => {
+                select.innerHTML += `<option value="${a}">${a}</option>`;
+            });
+        } catch(e){}
+    }
 
-      if (!tasks.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">暂无任务，请创建第一个换链任务</td></tr>';
-        return;
-      }
+    async function loadTasks() {
+        const alliance = document.getElementById('filter-alliance').value;
+        const status = document.getElementById('filter-status').value;
+        const campaign_name = document.getElementById('filter-campaign').value.trim();
 
-      tbody.innerHTML = tasks.map(t => {
-        let status, statusClass;
-        if (t.last_error) {
-          status = '错误';
-          statusClass = 'status-err';
-        } else if (t.final_url) {
-          status = '正常';
-          statusClass = 'status-ok';
+        const params = new URLSearchParams({ alliance, status, campaign_name });
+        const res = await fetch(`/api/tasks?${params}`);
+        const tasks = await res.json();
+
+        const tbody = document.getElementById('task-table-body');
+        tbody.innerHTML = '';
+
+        tasks.forEach(t => {
+            const statusBadge = t.status === 'active' 
+                ? `<span class="status-badge status-active">运行中</span>` 
+                : `<span class="status-badge status-paused">已停止</span>`;
+
+            const toggleIcon = t.status === 'active' 
+                ? `<span class="btn-icon" title="暂停" onclick="toggleStatus(${t.id}, 'paused')"><i class="bi bi-pause-fill"></i></span>`
+                : `<span class="btn-icon" title="启动" onclick="toggleStatus(${t.id}, 'active')"><i class="bi bi-play-fill text-success"></i></span>`;
+
+            tbody.innerHTML += `
+                <tr>
+                    <td><input type="checkbox"></td>
+                    <td>${t.alliance_name}</td>
+                    <td>
+                        <span class="truncate-text" title="${t.original_link}">${t.original_link}</span>
+                        <i class="bi bi-copy copy-btn" onclick="copyToClipboard('${t.original_link}')"></i>
+                    </td>
+                    <td>
+                        <b>${t.campaign_name}</b>
+                        <i class="bi bi-copy copy-btn" onclick="copyToClipboard('${t.campaign_name}')"></i>
+                    </td>
+                    <td>
+                        <span class="truncate-text" title="${t.final_url}">${t.final_url || '<span class="text-muted">等待抓取...</span>'}</span>
+                        ${t.final_url ? `<i class="bi bi-copy copy-btn" onclick="copyToClipboard('${t.final_url}')"></i>` : ''}
+                    </td>
+                    <td>${t.run_frequency}</td>
+                    <td>${t.last_updated || '-'}</td>
+                    <td>${t.last_changed_at || '-'}</td>
+                    <td>${statusBadge}</td>
+                    <td class="text-center">
+                        <span class="btn-icon" title="查看详情" onclick="viewTask(${t.id})"><i class="bi bi-eye"></i></span>
+                        <span class="btn-icon" title="编辑" onclick="editTask(${t.id})"><i class="bi bi-pencil"></i></span>
+                        ${toggleIcon}
+                        <span class="btn-icon" title="复制" onclick="copyTask(${t.id})"><i class="bi bi-files"></i></span>
+                        <span class="btn-icon" title="删除" onclick="deleteTask(${t.id})"><i class="bi bi-trash"></i></span>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
+    function resetFilter() {
+        document.getElementById('filter-alliance').value = '全部';
+        document.getElementById('filter-status').value = '全部';
+        document.getElementById('filter-campaign').value = '';
+        loadTasks();
+    }
+
+    function openModal() {
+        document.getElementById('taskForm').reset();
+        document.getElementById('task-id').value = '';
+        document.getElementById('modalTitle').innerText = '新增链接任务';
+        taskModalBS.show();
+    }
+
+    async function saveTask() {
+        const id = document.getElementById('task-id').value;
+        const payload = {
+            alliance_name: document.getElementById('form-alliance').value.trim(),
+            campaign_name: document.getElementById('form-campaign').value.trim(),
+            original_link: document.getElementById('form-original').value.trim(),
+            expected_domain: document.getElementById('form-domain').value.trim(),
+            proxy_url: document.getElementById('form-proxy').value.trim(),
+            run_frequency: parseInt(document.getElementById('form-frequency').value) || 60,
+            referer: document.getElementById('form-referer').value.trim(),
+            mcc_id: document.getElementById('form-mcc').value.trim(),
+            ads_account_id: document.getElementById('form-account').value.trim()
+        };
+
+        const url = id ? `/api/tasks/${id}` : '/api/tasks';
+        const method = id ? 'PUT' : 'POST';
+
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            taskModalBS.hide();
+            loadStats();
+            loadAlliances();
+            loadTasks();
+            alert(id ? '任务修改成功！' : '任务新建成功，已后台自动触发首次抓取！');
         } else {
-          status = '待运行';
-          statusClass = 'status-pending';
+            const err = await res.json();
+            alert(`保存失败: ${err.error}`);
         }
-
-        return `<tr>
-          <td>${t.id}</td>
-          <td>${esc(t.alliance_name)}</td>
-          <td>${esc(t.campaign_name)}</td>
-          <td>${esc(t.expected_domain)}</td>
-          <td class="url-cell" title="${esc(t.final_url || '')}">${esc(t.final_url || '-')}</td>
-          <td>${t.run_frequency}分钟</td>
-          <td><span class="status-badge ${statusClass}" title="${esc(t.last_error || '')}">${status}</span></td>
-          <td>${t.last_updated || '-'}</td>
-          <td class="actions">
-            <button class="btn btn-secondary btn-sm" onclick="runTask(${t.id})">运行</button>
-            <button class="btn btn-secondary btn-sm" onclick="editTask(${t.id})">编辑</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteTask(${t.id})">删除</button>
-          </td>
-        </tr>`;
-      }).join('');
-    } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="9" class="empty-state">加载失败: ${err.message}</td></tr>`;
     }
-  }
 
-  function esc(str) {
-    const d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML;
-  }
+    async function editTask(id) {
+        const res = await fetch(`/api/tasks/${id}`);
+        const t = await res.json();
 
-  document.getElementById('taskForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const id = document.getElementById('taskId').value;
-    const payload = {
-      alliance_name: document.getElementById('alliance_name').value.trim(),
-      original_link: document.getElementById('original_link').value.trim(),
-      proxy_url: document.getElementById('proxy_url').value.trim(),
-      expected_domain: document.getElementById('expected_domain').value.trim(),
-      mcc_id: document.getElementById('mcc_id').value.trim(),
-      ads_account_id: document.getElementById('ads_account_id').value.trim(),
-      campaign_name: document.getElementById('campaign_name').value.trim(),
-      run_frequency: parseInt(document.getElementById('run_frequency').value, 10) || 60,
-      run_hours: getSelectedHours(),
-      referer: document.getElementById('referer').value.trim(),
-      notes: document.getElementById('notes').value.trim(),
-    };
+        document.getElementById('task-id').value = t.id;
+        document.getElementById('form-alliance').value = t.alliance_name;
+        document.getElementById('form-campaign').value = t.campaign_name;
+        document.getElementById('form-original').value = t.original_link;
+        document.getElementById('form-domain').value = t.expected_domain;
+        document.getElementById('form-proxy').value = t.proxy_url;
+        document.getElementById('form-frequency').value = t.run_frequency;
+        document.getElementById('form-referer').value = t.referer || '';
+        document.getElementById('form-mcc').value = t.mcc_id || '';
+        document.getElementById('form-account').value = t.ads_account_id || '';
 
-    try {
-      const url = id ? `${API}/api/tasks/${id}` : `${API}/api/tasks`;
-      const res = await fetch(url, {
-        method: id ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '操作失败');
-
-      showToast(id ? '任务已更新' : '任务已创建');
-      resetForm();
-      loadTasks();
-    } catch (err) {
-      showToast(err.message, 'error');
+        document.getElementById('modalTitle').innerText = '编辑链接任务';
+        taskModalBS.show();
     }
-  });
 
-  async function editTask(id) {
-    try {
-      const res = await fetch(`${API}/api/tasks/${id}`);
-      const t = await res.json();
-      if (!res.ok) throw new Error(t.error);
+    async function copyTask(id) {
+        const res = await fetch(`/api/tasks/${id}`);
+        const t = await res.json();
 
-      document.getElementById('taskId').value = t.id;
-      document.getElementById('alliance_name').value = t.alliance_name;
-      document.getElementById('original_link').value = t.original_link;
-      document.getElementById('proxy_url').value = t.proxy_url;
-      document.getElementById('expected_domain').value = t.expected_domain;
-      document.getElementById('mcc_id').value = t.mcc_id || '';
-      document.getElementById('ads_account_id').value = t.ads_account_id || '';
-      document.getElementById('campaign_name').value = t.campaign_name;
-      document.getElementById('run_frequency').value = t.run_frequency;
-      document.getElementById('referer').value = t.referer || '';
-      document.getElementById('notes').value = t.notes || '';
-      setSelectedHours(t.run_hours || []);
+        document.getElementById('task-id').value = '';
+        document.getElementById('form-alliance').value = t.alliance_name;
+        document.getElementById('form-campaign').value = `${t.campaign_name}_copy`;
+        document.getElementById('form-original').value = t.original_link;
+        document.getElementById('form-domain').value = t.expected_domain;
+        document.getElementById('form-proxy').value = t.proxy_url;
+        document.getElementById('form-frequency').value = t.run_frequency;
+        document.getElementById('form-referer').value = t.referer || '';
+        document.getElementById('form-mcc').value = t.mcc_id || '';
+        document.getElementById('form-account').value = t.ads_account_id || '';
 
-      document.getElementById('formTitle').textContent = `编辑任务 #${t.id}`;
-      document.getElementById('btnSubmit').textContent = '保存修改';
-      document.getElementById('btnCancel').style.display = 'inline-flex';
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (err) {
-      showToast(err.message, 'error');
+        document.getElementById('modalTitle').innerText = '复制链接任务';
+        taskModalBS.show();
     }
-  }
 
-  async function deleteTask(id) {
-    if (!confirm('确定删除此任务？')) return;
-    try {
-      const res = await fetch(`${API}/api/tasks/${id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error);
-      }
-      showToast('任务已删除');
-      loadTasks();
-    } catch (err) {
-      showToast(err.message, 'error');
+    async function toggleStatus(id, newStatus) {
+        await fetch(`/api/tasks/${id}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        });
+        loadStats();
+        loadTasks();
     }
-  }
 
-  async function runTask(id) {
-    showToast('正在运行...');
-    try {
-      const res = await fetch(`${API}/api/tasks/${id}/run`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      if (data.last_error) {
-        showToast(data.last_error, 'error');
-      } else {
-        showToast('运行完成，Final URL 已更新');
-      }
-      loadTasks();
-    } catch (err) {
-      showToast(err.message, 'error');
+    async function deleteTask(id) {
+        if (!confirm('确定要删除该链接任务吗？')) return;
+        await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+        loadStats();
+        loadTasks();
     }
-  }
 
-  function copyScript() {
-    const text = adsScript || document.getElementById('scriptContent').textContent;
-    navigator.clipboard.writeText(text).then(() => {
-      showToast('脚本已复制到剪贴板');
-    }).catch(() => {
-      showToast('复制失败，请手动复制', 'error');
-    });
-  }
+    async function viewTask(id) {
+        const res = await fetch(`/api/tasks/${id}`);
+        const t = await res.json();
 
-  document.getElementById('btnCopyScript').addEventListener('click', () => {
-    document.getElementById('scriptContent').textContent = adsScript;
-    document.getElementById('scriptModal').classList.add('show');
-  });
-
-  document.getElementById('btnCopyScriptModal').addEventListener('click', copyScript);
-  document.getElementById('btnCloseModal').addEventListener('click', () => {
-    document.getElementById('scriptModal').classList.remove('show');
-  });
-
-  document.getElementById('btnCancel').addEventListener('click', resetForm);
-  document.getElementById('btnRefresh').addEventListener('click', loadTasks);
-
-  buildHoursGrid();
-  loadInfo();
-  loadAdsScript();
-  loadTasks();
+        const html = `
+            <table class="table table-bordered">
+                <tr><th width="120">广告系列</th><td>${t.campaign_name}</td></tr>
+                <tr><th>联盟名称</th><td>${t.alliance_name}</td></tr>
+                <tr><th>原始链接</th><td style="word-break:break-all;">${t.original_link}</td></tr>
+                <tr><th>预期域名</th><td>${t.expected_domain}</td></tr>
+                <tr><th>代理 IP</th><td>${t.proxy_url}</td></tr>
+                <tr><th>抓取结果</th><td style="word-break:break-all;" class="text-primary fw-bold">${t.final_url || '未获取'}</td></tr>
+                <tr><th>运行状态</th><td>${t.status === 'active' ? '运行中' : '已停止'}</td></tr>
+                <tr><th>错误日志</th><td class="text-danger">${t.last_error || '无异常'}</td></tr>
+            </table>
+        `;
+        document.getElementById('viewModalContent').innerHTML = html;
+        viewModalBS.show();
+    }
 </script>
 </body>
 </html>

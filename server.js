@@ -14,6 +14,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 let db;
 try {
     db = new DatabaseSync(path.join(__dirname, 'data.db'));
+    
+    // 初始化 tasks 数据表
     db.exec(`
       CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,12 +31,26 @@ try {
         referer TEXT DEFAULT '',
         notes TEXT DEFAULT '',
         final_url TEXT DEFAULT '',
+        status TEXT DEFAULT 'active',
+        is_deleted INTEGER DEFAULT 0,
+        run_count INTEGER DEFAULT 0,
         last_run_at TEXT,
         last_updated TEXT,
+        last_changed_at TEXT,
         last_error TEXT DEFAULT '',
         created_at TEXT DEFAULT (datetime('now'))
       )
     `);
+
+    // 兼容旧版本数据库字段补全
+    const addColumnSafely = (sql) => {
+        try { db.exec(sql); } catch (e) {}
+    };
+    addColumnSafely(`ALTER TABLE tasks ADD COLUMN status TEXT DEFAULT 'active'`);
+    addColumnSafely(`ALTER TABLE tasks ADD COLUMN is_deleted INTEGER DEFAULT 0`);
+    addColumnSafely(`ALTER TABLE tasks ADD COLUMN run_count INTEGER DEFAULT 0`);
+    addColumnSafely(`ALTER TABLE tasks ADD COLUMN last_changed_at TEXT`);
+
 } catch (err) {
     console.error("数据库初始化失败，请确保 Node.js 版本在 v22.5.0 以上:", err.message);
 }
@@ -55,7 +71,10 @@ function rowToTask(row) {
     if (!row) return null;
     return {
         ...row,
-        run_hours: parseRunHours(row.run_hours)
+        run_hours: parseRunHours(row.run_hours),
+        status: row.status || 'active',
+        is_deleted: row.is_deleted || 0,
+        run_count: row.run_count || 0
     };
 }
 
@@ -75,7 +94,6 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
         return '{lpurl}';
     };
 
-    // 提取预期域名的主关键词 (如从 "https://patrickta.com/" 提取出 "patrickta")
     let cleanDomainKeyword = '';
     try {
         const domainUrl = new URL(expectedDomain.startsWith('http') ? expectedDomain : `https://${expectedDomain}`);
@@ -104,10 +122,7 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
 
                 if (!cleanProxy.includes('://') && cleanProxy.split(':').length === 4) {
                     const parts = cleanProxy.split(':');
-                    host = parts[0];
-                    port = parts[1];
-                    username = parts[2];
-                    password = parts[3];
+                    host = parts[0]; port = parts[1]; username = parts[2]; password = parts[3];
                     args.push(`--proxy-server=http://${host}:${port}`);
                     proxyAuth = { username, password };
                 } else if (!cleanProxy.includes('://') && cleanProxy.split(':').length === 2) {
@@ -150,7 +165,6 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
 
         let capturedUrls = [];
 
-        // 监控 HTTP 重定向中的 Location 头
         page.on('response', response => {
             const status = response.status();
             if (status >= 300 && status < 400) {
@@ -161,7 +175,6 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
             }
         });
 
-        // 监控所有资源/页面请求
         page.on('request', req => {
             const reqUrl = req.url();
             if (reqUrl.includes('?') && !reqUrl.match(/\.(png|jpg|jpeg|gif|svg|css|js|woff2?)$/i)) {
@@ -169,20 +182,17 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
             }
         });
 
-        // 监控主框架导航
         page.on('framenavigated', frame => {
             if (frame === page.mainFrame()) {
                 capturedUrls.push(frame.url());
             }
         });
 
-        // 导航至原始链接，等待网络基本空闲
         await page.goto(originalLink, {
             waitUntil: 'networkidle2',
             timeout: 45000
         }).catch(() => {});
 
-        // 额外延迟等待，确保前端 JS 完成 Impact/SJV 联盟脚本重定向与注入
         await new Promise(resolve => setTimeout(resolve, 4000));
 
         const finalPageUrl = page.url();
@@ -190,7 +200,6 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
 
         await browser.close();
 
-        // 定义跳板/中转页特征（包含 code=, return=, redirect=, url=, subId 等）
         const isIntermediateUrl = (u) => {
             const lower = u.toLowerCase();
             return lower.includes('code=') || 
@@ -200,7 +209,6 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
                    lower.includes('subid');
         };
 
-        // 1. 优先定位：匹配目标域名、包含联盟真实追踪参数，且排除中间跳板特征
         const matchedTrackedUrl = capturedUrls.reverse().find(u => {
             const hasDomain = cleanDomainKeyword ? u.includes(cleanDomainKeyword) : true;
             const hasTrackParams = u.includes('irclickid') || u.includes('irgwc') || u.includes('gclid') || u.includes('utm_');
@@ -212,12 +220,10 @@ async function resolveFinalUrl(originalLink, proxyUrl, referer, expectedDomain) 
             return convertToLpurl(matchedTrackedUrl);
         }
 
-        // 2. 次优选择：使用最终页面停靠的地址 finalPageUrl（必须不带跳板特征）
         if (finalPageUrl.includes('?') && !isIntermediateUrl(finalPageUrl)) {
             return convertToLpurl(finalPageUrl);
         }
 
-        // 3. 兜底选择：从历史捕获中挑选匹配 target 域名且不含跳板特征的参数链接
         const cleanTarget = capturedUrls.reverse().find(u => 
             (cleanDomainKeyword ? u.includes(cleanDomainKeyword) : true) && 
             u.includes('?') && 
@@ -249,20 +255,30 @@ async function processTask(task) {
     if (!finalUrl) {
       const errMsg = `抓取结果为空`;
       db.prepare(
-        `UPDATE tasks SET last_error = ?, last_run_at = datetime('now') WHERE id = ?`
+        `UPDATE tasks SET last_error = ?, last_run_at = datetime('now'), run_count = run_count + 1 WHERE id = ?`
       ).run(errMsg, task.id);
       console.error(`[Task ${task.id}] ${errMsg}`);
       return;
     }
 
-    db.prepare(
-      `UPDATE tasks SET final_url = ?, last_error = '', last_updated = datetime('now'), last_run_at = datetime('now') WHERE id = ?`
-    ).run(finalUrl, task.id);
+    const oldTask = db.prepare('SELECT final_url FROM tasks WHERE id = ?').get(task.id);
+    const isUrlChanged = oldTask && oldTask.final_url !== finalUrl;
+
+    if (isUrlChanged) {
+        db.prepare(
+          `UPDATE tasks SET final_url = ?, last_error = '', last_updated = datetime('now'), last_run_at = datetime('now'), last_changed_at = datetime('now'), run_count = run_count + 1 WHERE id = ?`
+        ).run(finalUrl, task.id);
+    } else {
+        db.prepare(
+          `UPDATE tasks SET final_url = ?, last_error = '', last_updated = datetime('now'), last_run_at = datetime('now'), run_count = run_count + 1 WHERE id = ?`
+        ).run(finalUrl, task.id);
+    }
+
     console.log(`[Task ${task.id}] Final URL updated: ${finalUrl}`);
   } catch (err) {
     const errMsg = err.message || String(err);
     db.prepare(
-      `UPDATE tasks SET last_error = ?, last_run_at = datetime('now') WHERE id = ?`
+      `UPDATE tasks SET last_error = ?, last_run_at = datetime('now'), run_count = run_count + 1 WHERE id = ?`
     ).run(errMsg, task.id);
     console.error(`[Task ${task.id}] Error: ${errMsg}`);
   } finally {
@@ -271,6 +287,8 @@ async function processTask(task) {
 }
 
 function shouldRunTask(task, now) {
+  if (task.status === 'paused' || task.is_deleted === 1) return false;
+
   const hours = parseRunHours(task.run_hours);
   if (hours.length > 0 && !hours.includes(now.getHours())) {
     return false;
@@ -287,7 +305,7 @@ function shouldRunTask(task, now) {
 cron.schedule('* * * * *', () => {
   const now = new Date();
   if (!db) return;
-  const tasks = db.prepare('SELECT * FROM tasks').all().map(rowToTask);
+  const tasks = db.prepare('SELECT * FROM tasks WHERE is_deleted = 0').all().map(rowToTask);
 
   for (const task of tasks) {
     if (shouldRunTask(task, now)) {
@@ -296,6 +314,8 @@ cron.schedule('* * * * *', () => {
   }
 });
 
+// --- API 接口定义 ---
+
 app.get('/api/info', (_req, res) => {
   res.json({
     baseUrl: BASE_URL,
@@ -303,9 +323,61 @@ app.get('/api/info', (_req, res) => {
   });
 });
 
-app.get('/api/tasks', (_req, res) => {
+// 获取 KPI 顶栏统计数据
+app.get('/api/stats', (_req, res) => {
+    try {
+        const total = db.prepare('SELECT COUNT(*) as count FROM tasks WHERE is_deleted = 0').get().count;
+        const active = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status = 'active' AND is_deleted = 0").get().count;
+        const paused = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE status = 'paused' AND is_deleted = 0").get().count;
+        const deleted = db.prepare('SELECT COUNT(*) as count FROM tasks WHERE is_deleted = 1').get().count;
+        const totalRuns = db.prepare('SELECT SUM(run_count) as total FROM tasks').get().total || 0;
+
+        res.json({
+            total,
+            active,
+            paused,
+            deleted,
+            totalRuns
+        });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 获取所有联盟列表 (供筛选下拉框)
+app.get('/api/alliances', (_req, res) => {
+    try {
+        const rows = db.prepare('SELECT DISTINCT alliance_name FROM tasks WHERE is_deleted = 0').all();
+        const alliances = rows.map(r => r.alliance_name).filter(Boolean);
+        res.json(alliances);
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 获取任务列表
+app.get('/api/tasks', (req, res) => {
   try {
-    const tasks = db.prepare('SELECT * FROM tasks ORDER BY id DESC').all().map(rowToTask);
+    const { alliance, status, campaign_name } = req.query;
+    let sql = 'SELECT * FROM tasks WHERE is_deleted = 0';
+    const params = [];
+
+    if (alliance && alliance !== '全部') {
+        sql += ' AND alliance_name = ?';
+        params.push(alliance);
+    }
+    if (status && status !== '全部') {
+        sql += ' AND status = ?';
+        params.push(status === '运行中' ? 'active' : 'paused');
+    }
+    if (campaign_name) {
+        sql += ' AND campaign_name LIKE ?';
+        params.push(`%${campaign_name}%`);
+    }
+
+    sql += ' ORDER BY id DESC';
+
+    const tasks = db.prepare(sql).all(...params).map(rowToTask);
     res.json(tasks);
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -322,6 +394,7 @@ app.get('/api/tasks/:id', (req, res) => {
   }
 });
 
+// 新建任务：创建后后台异步自动运行
 app.post('/api/tasks', (req, res) => {
   const {
     alliance_name,
@@ -344,8 +417,8 @@ app.post('/api/tasks', (req, res) => {
   try {
     const result = db
       .prepare(
-        `INSERT INTO tasks (alliance_name, original_link, proxy_url, expected_domain, mcc_id, ads_account_id, campaign_name, run_frequency, run_hours, referer, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO tasks (alliance_name, original_link, proxy_url, expected_domain, mcc_id, ads_account_id, campaign_name, run_frequency, run_hours, referer, notes, status, is_deleted)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 0)`
       )
       .run(
         alliance_name,
@@ -364,6 +437,10 @@ app.post('/api/tasks', (req, res) => {
     const task = rowToTask(
       db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid)
     );
+
+    // 异步自动触发首次抓取
+    processTask(task);
+
     res.status(201).json(task);
   } catch (err) {
     if (err.message.includes('UNIQUE')) {
@@ -373,6 +450,25 @@ app.post('/api/tasks', (req, res) => {
   }
 });
 
+// 修改任务状态 (active / paused)
+app.patch('/api/tasks/:id/status', (req, res) => {
+  const { status } = req.body;
+  if (!['active', 'paused'].includes(status)) {
+    return res.status(400).json({ error: '无效的状态参数' });
+  }
+
+  try {
+    const result = db.prepare(`UPDATE tasks SET status = ? WHERE id = ?`).run(status, req.params.id);
+    if (result.changes === 0) return res.status(404).json({ error: '任务不存在' });
+
+    const task = rowToTask(db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id));
+    res.json(task);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 编辑更新任务
 app.put('/api/tasks/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: '任务不存在' });
@@ -422,9 +518,10 @@ app.put('/api/tasks/:id', (req, res) => {
   }
 });
 
+// 软删除任务
 app.delete('/api/tasks/:id', (req, res) => {
   try {
-    const result = db.prepare('DELETE FROM tasks WHERE id = ?').run(req.params.id);
+    const result = db.prepare('UPDATE tasks SET is_deleted = 1 WHERE id = ?').run(req.params.id);
     if (result.changes === 0) return res.status(404).json({ error: '任务不存在' });
     res.json({ success: true });
   } catch(e) {
@@ -432,6 +529,7 @@ app.delete('/api/tasks/:id', (req, res) => {
   }
 });
 
+// 手动触发一次抓取
 app.post('/api/tasks/:id/run', async (req, res) => {
   try {
     const row = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
@@ -446,6 +544,7 @@ app.post('/api/tasks/:id/run', async (req, res) => {
   }
 });
 
+// 提供给 Google Ads 脚本抓取的接口
 app.get('/ashx/gettemplate.ashx', (req, res) => {
   const { campaign_name } = req.query;
   if (!campaign_name) {
@@ -455,14 +554,13 @@ app.get('/ashx/gettemplate.ashx', (req, res) => {
 
   const row = db
     .prepare(
-      `SELECT final_url FROM tasks WHERE campaign_name = ? AND final_url != '' ORDER BY last_updated DESC LIMIT 1`
+      `SELECT final_url FROM tasks WHERE campaign_name = ? AND final_url != '' AND is_deleted = 0 ORDER BY last_updated DESC LIMIT 1`
     )
     .get(campaign_name);
 
   res.type('text/plain').send(row?.final_url || '');
 });
 
-// 全局 500 错误捕获
 app.use((err, req, res, next) => {
   console.error('服务器内部错误:', err);
   res.status(500).json({ error: err.message || '服务器内部错误' });
